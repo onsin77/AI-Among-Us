@@ -1,0 +1,101 @@
+== 连接桥 OK,hello ==
+== 开局:freeplay Airship ==
+  [PASS] debug_start ack {'type': 'ack', 'ref': 2, 'cmd': 'debug_start', 'ok': True, 'err': 'freeplay map=4'}
+  [PASS] 进入 PLAYING phase=PLAYING
+== A. 导航图 + move_to ==
+  起点: pos={'x': -0.66, 'y': -0.86} room=Engine
+  [PASS] move_to ack {'type': 'ack', 'ref': 5, 'cmd': 'move_to', 'ok': True}
+    [event] MOVE_FAILED stuck near 1.7,-0.8 x4 -> Brig
+  [FAIL] 移动完成事件 None
+  [PASS] 到达 Brig 附近 room=Engine pos={'x': 1.66, 'y': -0.81}
+  终点: pos={'x': 1.66, 'y': -0.81} room=Engine
+== B. open_task(优先挑多阶段任务) ==
+    [event] TASK_START task=1(UploadData) console@-2.0,7.0 range=0.55
+    [event] MOVE_FAILED stuck near -1.3,7.0 x4 -> task_1_console
+    [event] TASK_FLOW_ABORT task=1 reason=walk_stuck
+    任务 1 UploadData 未走到面板: task=1 reason=walk_stuck
+    [event] TASK_START task=2(DivertPower) console@17.6,-3.7 range=0.95
+    [event] MOVE_FAILED stuck near -9.6,-1.6 x4 -> task_2_console
+    [event] TASK_FLOW_ABORT task=2 reason=walk_stuck
+    任务 2 DivertPower 未走到面板: task=2 reason=walk_stuck
+    [event] TASK_START task=3(SortRecords) console@19.9,9.3 range=0.95
+    [event] MOVE_FAILED stuck near -10.6,-2.2 x4 -> task_3_console
+    [event] TASK_FLOW_ABORT task=3 reason=walk_stuck
+    任务 3 SortRecords 未走到面板: task=3 reason=walk_stuck
+    [event] TASK_START task=0(EnterIdCode) console@16.2,16.3 range=0.95
+    [event] MOVE_FAILED stuck near -15.7,-0.8 x4 -> task_0_console
+    [event] TASK_FLOW_ABORT task=0 reason=walk_stuck
+    任务 0 EnterIdCode 未走到面板: task=0 reason=walk_stuck
+    [event] TASK_START task=1(UploadData) console@-2.0,7.0 range=0.55
+    [event] MOVE_FAILED stuck near -1.3,7.0 x4 -> task_1_console
+    [event] TASK_FLOW_ABORT task=1 reason=walk_stuck
+    任务 1 UploadData 未走到面板: task=1 reason=walk_stuck
+    [event] TASK_START task=2(DivertPower) console@17.6,-3.7 range=0.95
+    [event] MOVE_FAILED stuck near -10.6,-2.0 x4 -> task_2_console
+    [event] TASK_FLOW_ABORT task=2 reason=walk_stuck
+    任务 2 DivertPower 未走到面板: task=2 reason=walk_stuck
+    [event] TASK_START task=3(SortRecords) console@19.9,9.3 range=0.95
+    [event] MOVE_FAILED stuck near -10.6,-2.1 x4 -> task_3_console
+    [event] TASK_FLOW_ABORT task=3 reason=walk_stuck
+    任务 3 SortRecords 未走到面板: task=3 reason=walk_stuck
+  [FAIL] 存在可做任务 无可开任务
+== C. 击杀/报告/会议 ==
+  [PASS] 设为内鬼(freeplay) {'type': 'ack', 'ref': 13, 'cmd': 'debug_set_role', 'ok': True}
+  debug:走向假人 6 @ [-12.64, 1.3]
+    [event] MOVE_DONE dest=(-12.6,1.3)
+  目标: 假人 6 dist=None
+    [event] KILL_CMD dist=0.9
+    [event] DEATH reason=unknown killer=
+  [PASS] kill 指令接受 {'type': 'ack', 'ref': 16, 'cmd': 'kill', 'ok': True}
+  [PASS] 击杀确认(死亡事件) reason=unknown killer=
+    [event] MEETING_START state=Animating
+  [PASS] report 指令 {'type': 'ack', 'ref': 17, 'cmd': 'report', 'ok': True}
+  [PASS] 进入 MEETING phase=MEETING
+  [PASS] 会议快照(reporter/order) {'reporter': 0, 'state': 'Animating', 'discussion_timer': 0, 'order': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]}
+  [PASS] 守卫:会议中 move_to 被拒 {'type': 'ack', 'ref': 18, 'cmd': 'move_to', 'ok': False, 'err': 'phase_guard:MEETING'}
+    [event] VOTE target=253
+  [PASS] vote skip 指令 {'type': 'ack', 'ref': 36, 'cmd': 'vote', 'ok': True}
+  [PASS] 投票事件 target=253
+    [event] MEETING_FF force skip all
+    [event] MEETING_END 
+  [PASS] 会议结束回 PLAYING phase=PLAYING
+== D. 边界用例 ==
+  [PASS] 守卫:非本人任务被拒 {'type': 'ack', 'ref': 40, 'cmd': 'open_task', 'ok': False, 'err': 'task_not_mine'}
+    跳过任务 0 SubmitScan: task_no_console
+    跳过任务 0 EnterIdCode: task_no_console
+    [event] TASK_START task=1(UploadData) console@-2.0,7.0 range=0.55
+    [event] MOVE_FAILED stuck near -1.3,7.0 x4 -> task_1_console
+    [event] TASK_FLOW_ABORT task=1 reason=walk_stuck
+    跳过任务 1 UploadData: None
+    [event] TASK_START task=2(DivertPower) console@17.6,-3.7 range=0.95
+    [event] MOVE_FAILED stuck near -10.6,-2.1 x4 -> task_2_console
+    [event] TASK_FLOW_ABORT task=2 reason=walk_stuck
+    跳过任务 2 DivertPower: None
+    [event] TASK_START task=3(SortRecords) console@19.9,9.3 range=0.95
+    [event] MOVE_FAILED stuck near -10.6,-2.2 x4 -> task_3_console
+    [event] TASK_FLOW_ABORT task=3 reason=walk_stuck
+    跳过任务 3 SortRecords: None
+  [FAIL] 面板打开(边界组) 未打开
+  [PASS] 守卫:未知指令回执 {'type': 'ack', 'ref': 46, 'cmd': 'flap_wings', 'ok': False, 'err': 'unknown_command'}
+
+========== 汇总 ==========
+  [PASS] debug_start ack
+  [PASS] 进入 PLAYING
+  [PASS] move_to ack
+  [FAIL] 移动完成事件
+  [PASS] 到达 Brig 附近
+  [FAIL] 存在可做任务
+  [PASS] 设为内鬼(freeplay)
+  [PASS] kill 指令接受
+  [PASS] 击杀确认(死亡事件)
+  [PASS] report 指令
+  [PASS] 进入 MEETING
+  [PASS] 会议快照(reporter/order)
+  [PASS] 守卫:会议中 move_to 被拒
+  [PASS] vote skip 指令
+  [PASS] 投票事件
+  [PASS] 会议结束回 PLAYING
+  [PASS] 守卫:非本人任务被拒
+  [FAIL] 面板打开(边界组)
+  [PASS] 守卫:未知指令回执
+  16/19 PASS

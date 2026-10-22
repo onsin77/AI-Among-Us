@@ -1,0 +1,390 @@
+using TheOtherRoles.Objects.Map;
+
+namespace TheOtherRoles.Patches;
+
+[HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.OnDestroy))]
+internal class IntroCutsceneOnDestroyPatch
+{
+    public static PoolablePlayer playerPrefab;
+    public static Vector3 bottomLeft;
+
+    public static void Prefix(IntroCutscene __instance)
+    {
+        Message($"游戏开始 MapId: {GameOptionsManager.Instance.CurrentGameOptions.MapId}");
+        GameDataManager.RecordEvent("GameStart");
+        if (ModOption.isCanceled) return;
+        // 整体兜底：Prefix 抛异常会中断原版 OnDestroy 的调用链，场景清理不干净，
+        // 会连锁引发 HudManager.Start/Update、ModManager.LateUpdate 等一连串原生空引用（潜艇图实测出现过）。
+        try
+        {
+        // Generate and initialize player icons
+        // 潜艇图等自定义地图加载时会重建相机，这一刻 Camera.main 可能为 null（实测触发过 NRE）。
+        // 相机缺失时用默认视野兜底：图标（纵火狂名单等依赖）照常生成，仅边角位置按 16:9 默认值计算。
+        var mainCamera = Camera.main;
+        if (PlayerControl.LocalPlayer != null && HudManager.Instance != null)
+        {
+            var playerCounter = 0;
+            var aspect = mainCamera != null ? mainCamera.aspect : 16f / 9f;
+            var safeOrthographicSize = mainCamera != null ? CameraSafeArea.GetSafeOrthographicSize(mainCamera) : 3f;
+            var xpos = 1.75f - (safeOrthographicSize * aspect * 1.70f);
+            var ypos = 0.15f - (safeOrthographicSize * 1.7f);
+            bottomLeft = new Vector3(xpos / 2, ypos / 2, -61f);
+
+            foreach (PlayerControl p in PlayerControl.AllPlayerControls)
+            {
+                var data = p.Data;
+                var player = UObject.Instantiate(__instance.PlayerPrefab, HudManager.Instance.transform);
+                playerPrefab = __instance.PlayerPrefab;
+                p.SetPlayerMaterialColors(player.cosmetics.currentBodySprite.BodySprite);
+                player.SetSkin(data.DefaultOutfit.SkinId, data.DefaultOutfit.ColorId);
+                player.cosmetics.SetHat(data.DefaultOutfit.HatId, data.DefaultOutfit.ColorId);
+                player.cosmetics.nameText.text = data.PlayerName;
+                player.SetFlipX(true);
+                ModOption.playerIcons[p.PlayerId] = player;
+                player.gameObject.SetActive(false);
+
+                if (PlayerControl.LocalPlayer == Arsonist.arsonist && p != Arsonist.arsonist)
+                {
+                    player.transform.localPosition = bottomLeft + new Vector3(-0.25f, -0.25f, 0) + (Vector3.right * playerCounter++ * 0.35f);
+                    player.transform.localScale = Vector3.one * 0.2f;
+                    player.setSemiTransparent(true);
+                    player.gameObject.SetActive(true);
+                }
+                else
+                {
+                    // This can be done for all players not just for the bounty hunter as it was before. Allows the thief to have the correct position and scaling
+                    player.transform.localPosition = bottomLeft;
+                    player.transform.localScale = Vector3.one * 0.4f;
+                    player.gameObject.SetActive(false);
+                }
+            }
+        }
+
+        // 管道追加
+        AdditionalVents.AddAdditionalVents();
+
+        // Add Electrical
+        FungleAdditionalElectrical.CreateElectrical();
+
+        // AntiTeleport set position
+        AntiTeleport.setPosition();
+        Sheriff.deputyCheckPromotion();
+
+        //游戏开始时重置cd
+        CustomButton.Initialize();
+
+        if (CustomOptionHolder.randomGameStartPosition.GetBool()) MapData.RandomSpawnPlayers();
+
+        if (AmongUsClient.Instance.AmHost)
+        {
+            var mapId = GameOptionsManager.Instance.currentNormalGameOptions.MapId;
+            var writerS = StartRPC(CustomRPC.DynamicMapOption);
+            writerS.Write(mapId);
+            writerS.EndRPC();
+
+            // First kill
+            if (ModOption.shieldFirstKill && ModOption.firstKillName != "")
+            {
+                var target = PlayerByName(ModOption.firstKillName);
+                if (target != null)
+                {
+                    var writer = StartRPC(CustomRPC.SetFirstKill);
+                    writer.Write(target.PlayerId);
+                    writer.EndRPC();
+                    RPCProcedure.setFirstKill(target.PlayerId);
+                }
+            }
+        }
+
+        // Force Bounty Hunter to load a new Bounty when the Intro is over
+        if (BountyHunter.bounty != null && PlayerControl.LocalPlayer == BountyHunter.bountyHunter)
+        {
+            BountyHunter.bountyUpdateTimer = 0f;
+            if (FastDestroyableSingleton<HudManager>.Instance != null)
+            {
+                BountyHunter.cooldownText = UObject.Instantiate(HudManager.Instance.KillButton.cooldownTimerText, HudManager.Instance.transform);
+                BountyHunter.cooldownText.alignment = TextAlignmentOptions.Center;
+                BountyHunter.cooldownText.transform.localPosition = bottomLeft + new Vector3(0f, -0.35f, -62f);
+                BountyHunter.cooldownText.transform.localScale = Vector3.one * 0.4f;
+                BountyHunter.cooldownText.gameObject.SetActive(true);
+            }
+        }
+        try
+        {
+            PlayerData.AllPlayerData.Values.Do(x =>
+            {
+                var player = x.Player;
+                var role = RoleInfo.getRoleInfoForPlayer(player, false, false).FirstOrDefault();
+                if (player?.Data == null) return;
+
+                x.ColorName = player.Data.GetPlayerColorString();
+                x.OriginRole = role?.roleId ?? RoleId.DefaultRole;
+                x.RoleType = role?.roleType ?? RoleType.Error;
+            });
+        }
+        catch (Exception ex)
+        {
+            Error(ex, "PlayerData");
+        }
+
+        if (!ModOption.DebugMode
+                    && AmongUsClient.Instance.NetworkMode != NetworkModes.FreePlay
+                    && !ChatControllerPatch.EnableChat.ForceEnableChat
+                    && !RoleDraft.isRunning
+                    && !ChatControllerPatch.CanEnableChat())
+        {
+            HudManager.Instance.Chat.Close();
+            HudManager.Instance.Chat.SetVisible(false);
+        }
+
+        Berserker.Timer = 0;
+        ModOption.firstKillName = "";
+        }
+        catch (Exception e)
+        {
+            Error($"Intro 结算处理失败（已跳过，不影响游戏启动）: {e}", "Intro");
+        }
+    }
+
+    public static void Postfix(IntroCutscene __instance)
+    {
+        if (ModOption.isCanceled) return;
+        // 显示按键提示
+        Rewired.KeyboardMap keyboardMap = Rewired.ReInput.mapping.GetKeyboardMapInstance(0, 0);
+        Il2CppReferenceArray<Rewired.ActionElementMap> actionArray;
+        Rewired.ActionElementMap actionMap;
+
+        // 地图
+        actionArray = keyboardMap.GetButtonMapsWithAction(4);
+        if (actionArray.Count > 0)
+        {
+            actionMap = actionArray[0];
+            _ = CustomButton.SetKeyGuideOnSmallButton(HudManager.Instance.MapButton.gameObject, actionMap.keyCode);
+            //_ = CustomButton.SetKeyGuide(HudManager.Instance.SabotageButton.gameObject, actionMap.keyCode);
+        }
+
+        // 使用
+        actionArray = keyboardMap.GetButtonMapsWithAction(6);
+        if (actionArray.Count > 0)
+        {
+            actionMap = actionArray[0];
+            _ = CustomButton.SetKeyGuide(HudManager.Instance.UseButton.gameObject, actionMap.keyCode);
+            _ = CustomButton.SetKeyGuide(HudManager.Instance.PetButton.gameObject, actionMap.keyCode);
+        }
+
+        // 报告
+        actionArray = keyboardMap.GetButtonMapsWithAction(7);
+        if (actionArray.Count > 0)
+        {
+            actionMap = actionArray[0];
+            _ = CustomButton.SetKeyGuide(HudManager.Instance.ReportButton.gameObject, actionMap.keyCode);
+        }
+
+        // 击杀
+        actionArray = keyboardMap.GetButtonMapsWithAction(8);
+        if (actionArray.Count > 0)
+        {
+            actionMap = actionArray[0];
+            _ = CustomButton.SetKeyGuide(HudManager.Instance.KillButton.gameObject, actionMap.keyCode);
+        }
+
+        // 管道
+        actionArray = keyboardMap.GetButtonMapsWithAction(50);
+        if (actionArray.Count > 0)
+        {
+            actionMap = actionArray[0];
+            _ = CustomButton.SetKeyGuide(HudManager.Instance.ImpostorVentButton.gameObject, actionMap.keyCode);
+        }
+    }
+}
+
+[HarmonyPatch]
+internal class IntroPatch
+{
+    public static void setupIntroTeamIcons(IntroCutscene __instance, ref ISystem.List<PlayerControl> yourTeam)
+    {
+        // Intro solo teams
+        if (PlayerControl.LocalPlayer.IsNeutral())
+        {
+            var soloTeam = new ISystem.List<PlayerControl>();
+            soloTeam.Add(PlayerControl.LocalPlayer);
+            yourTeam = soloTeam;
+        }
+
+        // Add the Spy to the Impostor team (for the Impostors)
+        if (Spy.spy != null && PlayerControl.LocalPlayer.Data.Role.IsImpostor)
+        {
+            var players = PlayerControl.AllPlayerControls.ToList().OrderBy(x => Guid.NewGuid()).ToList();
+            var fakeImpostorTeam =
+                new ISystem.List<PlayerControl>(); // The local player always has to be the first one in the list (to be displayed in the center)
+            fakeImpostorTeam.Add(PlayerControl.LocalPlayer);
+            foreach (var p in players)
+                if (PlayerControl.LocalPlayer != p && (p == Spy.spy || p.Data.Role.IsImpostor))
+                    fakeImpostorTeam.Add(p);
+            yourTeam = fakeImpostorTeam;
+        }
+
+        // Role draft: If spy is enabled, don't show the team
+        if (CustomOptionHolder.spySpawnRate.GetSelection() > 0 && PlayerControl.AllPlayerControls.ToArray().Where(x => x.Data.Role.IsImpostor).Count() > 1)
+        {
+            // The local player always has to be the first one in the list (to be displayed in the center)
+            var fakeImpostorTeam = new ISystem.List<PlayerControl>();
+            fakeImpostorTeam.Add(PlayerControl.LocalPlayer);
+            yourTeam = fakeImpostorTeam;
+        }
+    }
+
+    public static void setupIntroTeam(IntroCutscene __instance, ref ISystem.List<PlayerControl> yourTeam)
+    {
+        var neutralColor = new Color32(76, 84, 78, 255);
+        var infos = RoleInfo.getRoleInfoForPlayer(PlayerControl.LocalPlayer);
+        var roleInfo = infos.FirstOrDefault(info => info.roleType != RoleType.Modifier);
+        if (roleInfo == null) return;
+        if (RoleDraft.isEnabled && !PlayerControl.LocalPlayer.IsImpostor())
+        {
+            __instance.BackgroundBar.material.color = neutralColor;
+            __instance.TeamTitle.text = "UnknownTeam".Translate();
+            __instance.TeamTitle.color = Palette.CrewmateBlue;
+            return;
+        }
+        if (roleInfo.roleType == RoleType.Neutral)
+        {
+            __instance.BackgroundBar.material.color = roleInfo.color;
+            __instance.TeamTitle.text = "NeutralTeam".Translate();
+            __instance.TeamTitle.color = neutralColor;
+        }
+        else
+        {
+            var isCrew = true;
+            if (roleInfo.color == Palette.ImpostorRed) isCrew = false;
+            if (isCrew)
+            {
+                __instance.BackgroundBar.material.color = roleInfo.color;
+                __instance.TeamTitle.text = "CrewmateTeam".Translate();
+                __instance.TeamTitle.color = Palette.CrewmateBlue;
+            }
+            else
+            {
+                __instance.BackgroundBar.material.color = roleInfo.color;
+                __instance.TeamTitle.text = "ImpostorTeam".Translate();
+                __instance.TeamTitle.color = Palette.ImpostorRed;
+            }
+        }
+    }
+
+    public static IEnumerator<WaitForSeconds> EndShowRole(IntroCutscene __instance)
+    {
+        yield return new WaitForSeconds(5f);
+        __instance.YouAreText.gameObject.SetActive(false);
+        __instance.RoleText.gameObject.SetActive(false);
+        __instance.RoleBlurbText.gameObject.SetActive(false);
+        __instance.ourCrewmate.gameObject.SetActive(false);
+    }
+
+    [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.CreatePlayer))]
+    private class CreatePlayerPatch
+    {
+        public static void Postfix(IntroCutscene __instance, bool impostorPositioning, ref PoolablePlayer __result)
+        {
+            if (impostorPositioning) __result.SetNameColor(Palette.ImpostorRed);
+        }
+    }
+
+
+    [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.ShowRole))]
+    private class SetUpRoleTextPatch
+    {
+        public static void SetRoleTexts(IntroCutscene __instance)
+        {
+            // Don't override the intro of the vanilla roles
+            var infos = RoleInfo.getRoleInfoForPlayer(PlayerControl.LocalPlayer);
+            var roleInfo = infos.FirstOrDefault(info => info.roleType != RoleType.Modifier);
+            var modifierInfo = infos.OrderBy(x => x.roleId != RoleId.Lover).FirstOrDefault(info => info.roleType == RoleType.Modifier && info.roleId != RoleId.Assassin);
+
+            __instance.RoleBlurbText.text = "";
+            if (roleInfo != null)
+            {
+                __instance.RoleText.text = roleInfo.Name;
+                __instance.RoleText.color = roleInfo.color;
+                __instance.RoleBlurbText.text = roleInfo.IntroDescription;
+                __instance.RoleBlurbText.color = roleInfo.color;
+            }
+
+            if (Sheriff.knowsSheriff && Sheriff.Deputy != null && Sheriff.Player.FirstOrDefault() != null)
+            {
+                if (infos.Any(info => info.roleId == RoleId.Sheriff))
+                {
+                    __instance.RoleBlurbText.text = Cs(Sheriff.color,
+                        string.Format(GetString("IntroShowRole.Sheriff"), Sheriff.Deputy?.Data?.PlayerName ?? "NULL"));
+                }
+                else if (infos.Any(info => info.roleId == RoleId.Deputy))
+                {
+                    __instance.RoleBlurbText.text = Cs(Sheriff.color,
+                        string.Format(GetString("IntroShowRole.Deputy"), Sheriff.Player.FirstOrDefault()?.Data?.PlayerName ?? "NULL"));
+                }
+            }
+
+            if (Executioner.executioner != null && infos.Any(info => info.roleId == RoleId.Executioner))
+            {
+                __instance.RoleBlurbText.text = Cs(Executioner.color,
+                    string.Format(GetString("IntroShowRole.Executioner"), Executioner.target?.Data?.PlayerName ?? "NULL"));
+            }
+
+            if (Lawyer.lawyer != null && infos.Any(info => info.roleId == RoleId.Lawyer))
+            {
+                __instance.RoleBlurbText.text = Cs(Lawyer.color,
+                    string.Format(GetString("IntroShowRole.Lawyer"), Lawyer.target?.Data?.PlayerName ?? "NULL"));
+            }
+
+            if (modifierInfo != null)
+            {
+                if (modifierInfo.roleId == RoleId.Lover)
+                {
+                    var otherLover = PlayerControl.LocalPlayer.GetPartner();
+                    __instance.RoleBlurbText.text += "\n" + Cs(Lovers.color,
+                        string.Format(GetString("IntroShowRole.Lovers"), otherLover?.Data?.PlayerName ?? "NULL"));
+                }
+                else
+                {
+                    __instance.RoleBlurbText.text += "\n" + Cs(modifierInfo.color, modifierInfo.IntroDescription);
+                }
+            }
+        }
+
+        public static bool Prefix(IntroCutscene __instance)
+        {
+            FastDestroyableSingleton<HudManager>.Instance.StartCoroutine(Effects.Lerp(1f,
+                new Action<float>(p => { SetRoleTexts(__instance); })));
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.BeginCrewmate))]
+    private class BeginCrewmatePatch
+    {
+        public static void Prefix(IntroCutscene __instance, ref ISystem.List<PlayerControl> teamToDisplay)
+        {
+            setupIntroTeamIcons(__instance, ref teamToDisplay);
+        }
+
+        public static void Postfix(IntroCutscene __instance, ref ISystem.List<PlayerControl> teamToDisplay)
+        {
+            setupIntroTeam(__instance, ref teamToDisplay);
+        }
+    }
+
+    [HarmonyPatch(typeof(IntroCutscene), nameof(IntroCutscene.BeginImpostor))]
+    private class BeginImpostorPatch
+    {
+        public static void Prefix(IntroCutscene __instance, ref ISystem.List<PlayerControl> yourTeam)
+        {
+            setupIntroTeamIcons(__instance, ref yourTeam);
+        }
+
+        public static void Postfix(IntroCutscene __instance, ref ISystem.List<PlayerControl> yourTeam)
+        {
+            setupIntroTeam(__instance, ref yourTeam);
+        }
+    }
+}
+

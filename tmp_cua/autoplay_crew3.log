@@ -1,0 +1,23 @@
+== 自主验收 mode=crew 时长=300s ==
+起点 {'x': 17.8, 'y': -4.23} 角色=Crewmate 阵营=Crew
+[   0s] action='task 0' tasks=0/4 kills=0 reports=0 err=-
+[  30s] action='walk_task EnterIdCode' tasks=1/4 kills=0 reports=0 err=-
+[  33s] action='task 0' tasks=1/4 kills=0 reports=0 err=-
+[  54s] action='walk_task EmptyGarbage' tasks=1/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[  57s] action='task 1' tasks=1/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[  66s] action='task 3' tasks=2/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 106s] action='no_task' tasks=3/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 115s] action='no_task' tasks=3/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 124s] action='no_task' tasks=3/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 139s] action='no_task' tasks=3/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 148s] action='no_task' tasks=3/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 157s] action='no_task' tasks=3/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 166s] action='no_task' tasks=3/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 172s] action='no_task' tasks=3/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 175s] action='task 0' tasks=3/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 203s] action='no_task' tasks=4/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+个人任务全部完成
+
+== 结果 ==
+tasks=4/4 kills=0 reports=0 report_acks=0 move_failed=1 last_err=task 0 abort: task=0 reason=walk_stuck
+PASS

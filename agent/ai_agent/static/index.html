@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>AIAmongUs 控制面板</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  --bg:#0f1218; --panel:#171c26; --panel2:#1d2431; --line:#2a3242;
+  --fg:#dbe2ee; --dim:#8b96a8; --accent:#4da3ff; --ok:#37d67a; --warn:#e8c350; --bad:#ff5f5f; --purple:#c58aff;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; }
+header { display:flex; align-items:center; gap:12px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:9; flex-wrap:wrap; }
+header h1 { font-size:14px; margin:0 6px 0 0; }
+.dot { width:10px; height:10px; border-radius:50%; background:var(--bad); }
+.dot.on { background:var(--ok); }
+.badge { padding:2px 9px; border-radius:12px; font-weight:600; font-size:11px; background:var(--panel2); border:1px solid var(--line); }
+.badge.MENU{color:#9aa5b5} .badge.LOBBY{color:var(--warn);border-color:var(--warn)}
+.badge.PLAYING{color:var(--ok);border-color:var(--ok)} .badge.MEETING{color:var(--purple);border-color:var(--purple)}
+.badge.ENDED{color:var(--bad);border-color:var(--bad)}
+main { display:grid; grid-template-columns:300px minmax(420px,1fr) 360px; gap:10px; padding:10px; align-items:start; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:10px; }
+.card h2 { font-size:12px; margin:0 0 8px; color:var(--accent); font-weight:600; letter-spacing:.4px; display:flex; justify-content:space-between; align-items:center; }
+.kv { display:grid; grid-template-columns:88px 1fr; row-gap:3px; }
+.kv .k { color:var(--dim); }
+table { width:100%; border-collapse:collapse; font-size:11.5px; }
+th,td { text-align:left; padding:2px 5px; border-bottom:1px solid var(--line); white-space:nowrap; }
+th { color:var(--dim); font-weight:500; }
+.dead{color:var(--bad);text-decoration:line-through} .invis{color:var(--dim)}
+.bar { height:7px; background:var(--panel2); border-radius:4px; overflow:hidden; }
+.bar>div { height:100%; background:var(--ok); }
+.muted { color:var(--dim); }
+.num { font-family:Consolas,monospace; }
+button { background:var(--panel2); color:var(--accent); border:1px solid var(--line); border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px; }
+button:hover { border-color:var(--accent); }
+button.primary { color:#0b1220; background:var(--accent); border-color:var(--accent); font-weight:600; }
+button.danger { color:var(--bad); }
+button:disabled { opacity:.45; cursor:not-allowed; }
+input,select { background:var(--panel2); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:4px 7px; font-size:12px; }
+.row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+#mapWrap { position:relative; background:#0b0f15; border-radius:8px; overflow:hidden; }
+#map { display:block; width:100%; height:auto; cursor:crosshair; }
+#mapInfo { position:absolute; right:6px; bottom:4px; font:11px Consolas,monospace; color:var(--dim); background:#0b0f15cc; padding:2px 6px; border-radius:5px; }
+#events { height:190px; overflow-y:auto; font:11px/1.45 Consolas,monospace; }
+#events div { padding:1px 3px; border-bottom:1px dashed #232b3a; }
+.ev-CHAT{color:#9fd2ff} .ev-DEATH{color:var(--bad)} .ev-TASK_DONE,.ev-TASK_FLOW_DONE{color:var(--ok)}
+.ev-MEETING_START,.ev-MEETING_END{color:var(--purple)} .ev-KILL_CMD{color:var(--warn)}
+#chatList { height:120px; overflow-y:auto; font-size:12px; }
+#chatList div { padding:1px 0; }
+#chatList b { color:var(--accent); }
+#aiOut { background:var(--panel2); border-radius:6px; padding:6px; font:11.5px/1.5 Consolas,monospace; white-space:pre-wrap; max-height:150px; overflow:auto; }
+#raw { max-height:150px; overflow:auto; font:10.5px/1.4 Consolas,monospace; color:var(--dim); white-space:pre-wrap; word-break:break-all; }
+#console input { flex:1; font-family:Consolas,monospace; }
+.small { font-size:11px; }
+.switch { display:inline-flex; gap:4px; align-items:center; }
+.legend span { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:3px; vertical-align:-1px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="connDot"></span>
+  <h1>AIAmongUs 面板</h1>
+  <span class="badge" id="phaseBadge">--</span>
+  <span>地图 <b id="mapName" class="num">--</b></span>
+  <span>轮次 <b id="round" class="num">--</b></span>
+  <span>t=<b id="gtime" class="num">--</b>s</span>
+  <span>tick <b id="tick" class="num">--</b></span>
+  <span>频率 <b id="hz" class="num">--</b></span>
+  <span class="badge" id="ctrlBadgeTop">接管:--</span>
+  <span class="badge" id="behBadge">行为:--</span>
+  <span class="badge" id="meetBadge">会议AI:--</span>
+  <span class="badge" id="voiceBadge">语音:--</span>
+  <span class="muted small" id="helloInfo"></span>
+</header>
+
+<main>
+  <!-- 左列 -->
+  <div>
+    <div class="card" style="border-color:#3a4c66">
+      <h2>脚本总控 <span class="badge" id="ctrlBadge">--</span></h2>
+      <div class="row" style="margin-bottom:6px">
+        <select id="ctrlMode">
+          <option value="auto">auto 按角色</option>
+          <option value="crew">crew 好人任务/报尸</option>
+          <option value="impostor">impostor 巡逻击杀</option>
+        </select>
+        <label class="small muted switch"><input type="checkbox" id="ctrlAutostart">开始新局</label>
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <button class="primary" id="btnStart" onclick="ctrlAction('start')">开始接管</button>
+        <button id="btnStop" onclick="ctrlAction('stop')">停止接管</button>
+        <button class="danger" onclick="ctrlShutdown()">关闭脚本</button>
+      </div>
+      <div class="small muted" id="ctrlInfo">--</div>
+    </div>
+    <div class="card" style="border-color:#3a6656">
+      <h2>整局托管 <span class="badge" id="sessBadge">--</span></h2>
+      <div class="row" style="margin-bottom:6px">
+        <select id="sessKind">
+          <option value="local">local 本地开房(可加bot)</option>
+          <option value="online">online 在线开房(好友加入)</option>
+          <option value="freeplay">freeplay 练习</option>
+        </select>
+        <label class="small muted switch">bot <input type="number" id="sessBots" value="0" min="0" max="9" style="width:46px"></label>
+        <label class="small muted switch">最少 <input type="number" id="sessMin" value="4" min="1" max="10" style="width:46px"></label>
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <label class="small muted switch"><input type="checkbox" id="sessAutoNext" checked>自动下一局</label>
+        <label class="small muted switch"><input type="checkbox" id="sessAutoStart" checked>自动开局</label>
+        <label class="small muted switch">局数 <input type="number" id="sessMaxGames" value="0" min="0" style="width:46px" title="0=无限"></label>
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <button class="primary" id="sessStart" onclick="sessStart()">开始整局托管</button>
+        <button id="sessStop" onclick="sessAction('stop')">停止</button>
+        <button onclick="sessAction('start_now')">立即开局</button>
+        <button onclick="sessAction('next_game')">下一局</button>
+        <button onclick="sessAction('leave_game')">回菜单</button>
+      </div>
+      <div class="kv" id="sessKv"></div>
+    </div>
+    <div class="card">
+      <h2>我 (ME)</h2>
+      <div class="kv" id="meKv"></div>
+      <div style="margin-top:8px">
+        <div class="muted small">任务进度 <span id="taskText" class="num"></span></div>
+        <div class="bar"><div id="taskBar" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>技能</h2>
+      <div id="abilities"><span class="muted">--</span></div>
+    </div>
+    <div class="card">
+      <h2>任务列表 <span class="muted small" id="taskHint"></span></h2>
+      <div id="taskList" style="max-height:240px;overflow:auto"><span class="muted">--</span></div>
+    </div>
+    <div class="card">
+      <h2>快捷指令</h2>
+      <div class="row" style="margin-bottom:6px">
+        <button onclick="cmd({type:'debug_start',mode:'freeplay',map:4})">开局(飞艇)</button>
+        <button onclick="cmd({type:'debug_set_role',role:'Impostor'})">设内鬼</button>
+        <button onclick="cmd({type:'debug_set_role',role:'Crewmate'})">设船员</button>
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <button onclick="cmd({type:'kill',target_id:nearestTargetId()})" class="danger">击杀最近</button>
+        <button onclick="cmd({type:'report'})">报告尸体</button>
+        <button onclick="cmd({type:'vote',skip:true})">投跳过</button>
+        <button onclick="cmd({type:'debug_meeting_ff'})">会议快进</button>
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <button onclick="cmd({type:'vent_enter'})">进管道</button>
+        <button onclick="cmd({type:'vent_exit'})">出管道</button>
+        <button onclick="cmd({type:'use_sabotage',kind:$('sabSel').value})" id="sabBtn" class="danger">破坏</button>
+        <select id="sabSel" onchange="$('sabBtn').textContent='破坏:'+this.options[this.selectedIndex].text">
+          <option value="Lights">灯</option><option value="Reactor">反应堆</option>
+          <option value="Oxygen">氧气</option><option value="Comms">通讯</option>
+          <option value="HeliSabotage">直升机</option>
+        </select>
+        <button onclick="cmd({type:'repair',kind:'lights'})">修灯</button>
+      </div>
+      <div class="row">
+        <select id="roomSel"></select>
+        <button onclick="cmd({type:'move_to',room:roomSel.value})">前往房间</button>
+        <button onclick="cmd({type:'move_stop'})">停下</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button onclick="cmd({type:'nav_dump'})">刷新地图</button>
+        <button onclick="cmd({type:'nav_info'})">导航状态</button>
+        <button onclick="cmd({type:'get_state'})">取状态</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 中列:地图 + 事件 -->
+  <div>
+    <div class="card">
+      <h2>地图 <span class="muted small legend">
+        <span style="background:#1d3a5f"></span>可达
+        <span style="background:#243244"></span>可走
+        <span style="background:#2f7d4f"></span>特殊边
+        <span style="background:#ffd75e"></span>路径
+      </span></h2>
+      <div id="mapWrap">
+        <canvas id="map" width="900" height="500"></canvas>
+        <div id="mapInfo">点击地图设置目标</div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="small muted">目标:</span><span class="num small" id="targetTxt">--</span>
+        <button onclick="sendNavPath()">规划路径</button>
+        <button class="primary" onclick="sendMoveTo()">前往目标</button>
+        <button onclick="clearPath()">清除路径</button>
+        <label class="small muted switch"><input type="checkbox" id="showGrid" checked onchange="renderMap()">显示网格</label>
+        <label class="small muted switch"><input type="checkbox" id="showPath" checked onchange="renderMap()">显示路径</label>
+      </div>
+    </div>
+    <div class="card">
+      <h2>事件流 <span class="muted small"><label class="switch"><input type="checkbox" id="autoScroll" checked>自动滚动</label></span></h2>
+      <div id="events"></div>
+    </div>
+    <div class="card">
+      <h2>原始指令 (JSON 透传 L1)</h2>
+      <div id="console" class="row">
+        <input id="cmdInput" placeholder='{"type":"get_state"}' spellcheck="false">
+        <button onclick="sendCmd()">发送</button>
+      </div>
+      <div id="raw" style="margin-top:8px">--</div>
+    </div>
+  </div>
+
+  <!-- 右列:玩家/环境/会议 -->
+  <div>
+    <div class="card">
+      <h2>玩家</h2>
+      <table id="playersTable">
+        <thead><tr><th>id</th><th>名字</th><th>状态</th><th>距离</th><th>房间</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>尸体 / 破坏 / 会议</h2>
+      <div class="kv" id="envKv"></div>
+    </div>
+    <div class="card">
+      <h2>会议 AI <button class="small" onclick="respondNow()">立即回应</button></h2>
+      <div class="kv" id="meetKv"></div>
+      <div class="row" style="margin:6px 0">
+        <input id="chatSpeaker" placeholder="speaker" style="width:86px">
+        <input id="chatText" placeholder="玩家发言内容…" style="flex:1">
+        <button onclick="feedChat()">喂入</button>
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <input id="voteTarget" placeholder="投票目标(空=skip)" style="flex:1">
+        <button onclick="feedVote()">喂投票</button>
+      </div>
+      <div id="chatList"></div>
+      <div class="small muted" style="margin:6px 0 2px">AI 最后输出</div>
+      <div id="aiOut">--</div>
+    </div>
+    <div class="card" style="border-color:#6b4da3">
+      <h2>语音会议(YY·轮麦) <span class="badge" id="voiceStateBadge">--</span></h2>
+      <div class="row" style="margin-bottom:6px">
+        <button id="btnVoiceToggle" onclick="voiceToggle()">启用语音</button>
+        <button onclick="voiceAction('next')" title="通知换人发言了(跳到下一位)">下一位 ↵</button>
+        <button onclick="voiceAction('me')">轮到我了</button>
+        <button onclick="voiceAction('skip_me')">跳过我</button>
+        <button onclick="voiceAction('vote_now')">立即表决</button>
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <span class="small muted">发言顺序:</span><span id="turnChips" class="small" style="flex:1">--</span>
+      </div>
+      <div class="kv" id="voiceKv"></div>
+      <div class="row" style="margin:6px 0">
+        <span class="small muted">麦克风(CABLE):</span>
+        <div class="bar" style="flex:1"><div id="micBar" style="width:0%;background:var(--warn)"></div></div>
+      </div>
+      <div id="voiceLive" class="small" style="color:var(--purple);min-height:18px"></div>
+      <div id="voiceTranscript" style="height:150px;overflow-y:auto;font-size:12px;margin-top:4px"></div>
+      <div class="small muted" style="margin:6px 0 2px">音色绑定(rl → 玩家,可手动改)</div>
+      <div id="voiceBindings" class="small"></div>
+      <div class="small muted" style="margin:6px 0 2px">怀疑度</div>
+      <div id="voiceSus" class="small"></div>
+      <div class="row" style="margin-top:8px">
+        <select id="ttsVoice">
+          <option value="xiaoyan">xiaoyan 女</option>
+          <option value="xiaofeng">xiaofeng 男</option>
+        </select>
+        <button onclick="voiceSetVoice()">换音色</button>
+        <button onclick="voiceTestTts()">试听</button>
+        <span class="small muted" id="voiceMy"></span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>行为引擎</h2>
+      <div class="row" style="margin-bottom:6px">
+        <select id="behMode">
+          <option value="monitor">monitor 只看</option>
+          <option value="crew">crew 好人任务/报尸</option>
+          <option value="impostor">impostor 巡逻击杀(不报警)</option>
+          <option value="auto">auto 按角色</option>
+        </select>
+        <button onclick="setBehMode()">应用</button>
+        <label class="small muted switch"><input type="checkbox" id="behAutoAb" checked onchange="setAutoAb(this.checked)">自动技能</label>
+      </div>
+      <div class="kv" id="behKv"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const STEP = 0.25;              // L1 栅格步长
+const ROOMS = ["Engine","Brig","MainHall","CargoBay","MedBay","Security","Records","Showers","Kitchen","Comms","VaultRoom","MeetingRoom","GapRoom","Electrical","ViewingDeck","Armory","Lounge","Cockpit","Decontamination"];
+let st = {};                    // 最新 state
+let status = {};
+let eventsSince = 0;
+let mapDump = null, mapPath = null;
+let target = null;              // {x,y}
+let gridCanvas = null;          // 预渲染栅格
+let lastMapAt = 0;
+
+const $ = id => document.getElementById(id);
+const esc = s => { const d=document.createElement('div'); d.textContent = s==null?'':String(s); return d.innerHTML; };
+const kv = (k,v,c) => `<span class="k">${esc(k)}</span><span class="${c||''}">${v}</span>`;
+
+async function jget(u){ const r = await fetch(u); if(!r.ok) throw new Error(u); return r.json(); }
+async function jpost(u,b){ const r = await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})}); return r.json(); }
+
+/* ---------- 状态轮询 ---------- */
+async function pollState(){
+  try{
+    const [stt, sd] = await Promise.all([jget('/api/status'), jget('/api/state')]);
+    status = stt; st = sd.state || {};
+    renderHeader(); renderMe(); renderPlayers(); renderEnv(); renderChatFromState();
+    maybeRefreshMap();
+  }catch(e){}
+  setTimeout(pollState, 250);
+}
+
+function renderHeader(){
+  $('connDot').classList.toggle('on', !!status.connected);
+  $('helloInfo').textContent = status.hello ? `${status.hello.mod} · ${status.hello.plugin}` : '';
+  $('hz').textContent = status.msgs_per_sec ?? '--';
+  const phase = st.phase || '--';
+  const pb = $('phaseBadge'); pb.textContent = phase; pb.className = 'badge ' + phase;
+  $('mapName').textContent = st.map || '--';
+  $('round').textContent = st.round ?? '--';
+  $('gtime').textContent = st.t != null ? st.t.toFixed(1) : '--';
+  $('tick').textContent = st.tick ?? '--';
+}
+
+function renderMe(){
+  const me = st.me; const el = $('meKv');
+  if(!me){ el.innerHTML = kv('me','null(未在局内)','muted'); return; }
+  el.innerHTML =
+    kv('名字', `${esc(me.name)} <span class="muted">(${esc(me.color)})</span>`) +
+    kv('id', `<span class="num">${me.player_id}</span>`) +
+    kv('角色', me.role ? `<b>${esc(me.role)}</b>` : '<span class="muted">未分配</span>') +
+    kv('阵营', me.team ? esc(me.team) : '--') +
+    kv('存活', me.alive ? '是' : '<span class="dead">死亡</span>') +
+    kv('位置', me.position ? `<span class="num">(${me.position.x}, ${me.position.y})</span>` : '--') +
+    kv('房间', me.room || '<span class="muted">走廊</span>') +
+    kv('kill_cd', me.kill_cooldown != null ? `<span class="num">${me.kill_cooldown}s</span>` : '--') +
+    kv('可移动', me.can_move ? '是' : '<span class="muted">否</span>');
+  const done = me.tasks ? me.tasks.done : 0, total = me.tasks ? me.tasks.total : 0;
+  $('taskText').textContent = total ? `${done}/${total}` : '';
+  $('taskBar').style.width = total ? (done/total*100)+'%' : '0%';
+  const ab = $('abilities');
+  if(me.abilities && me.abilities.length){
+    ab.innerHTML = me.abilities.map(a =>
+      `<div class="small" style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:2px 5px;background:var(--panel2);border-radius:5px;margin-bottom:3px;border-left:3px solid ${a.ready?'var(--ok)':'var(--line)'}">
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis" title="${esc(a.key)}">${esc(a.key)}</span>
+        <span class="num muted">${a.ready?'READY':(a.cooldown||0)+'s'}${a.uses>=0?' · 剩'+a.uses:''}</span>
+        <button class="small" ${a.ready?'':'disabled'} onclick="cmd({type:'use_ability',key:'${esc(a.key)}'})">用</button></div>`).join('');
+  } else ab.innerHTML = '<span class="muted">无(当前角色无主动技能)</span>';
+  const tl = $('taskList');
+  if(me.tasks && me.tasks.list && me.tasks.list.length){
+    tl.innerHTML = '<table><thead><tr><th>id</th><th>任务</th><th>房间</th><th>进度</th><th></th></tr></thead><tbody>' +
+      me.tasks.list.map(t => `<tr><td class="num">${t.id}</td><td class="${t.done?'dead':''}">${esc(t.name)}</td>
+        <td>${esc(t.room)}</td><td class="num">${t.max_step>0?(t.done?t.max_step:t.step)+'/'+t.max_step:(t.done?'✓':'-')}</td>
+        <td>${t.done?'':'<button class="small" onclick="cmd({type:\'open_task\',task_id:'+t.id+'})">做</button>'}</td></tr>`).join('') +
+      '</tbody></table>';
+    $('taskHint').textContent = `(${me.tasks.list.filter(t=>t.done).length}/${me.tasks.list.length})`;
+  } else tl.innerHTML = '<span class="muted">--</span>';
+}
+
+function renderPlayers(){
+  const tb = document.querySelector('#playersTable tbody');
+  const ps = st.players || [];
+  if(!ps.length){ tb.innerHTML = '<tr><td colspan="5" class="muted">无</td></tr>'; return; }
+  tb.innerHTML = ps.map(p => `<tr class="${!p.alive?'dead':''} ${!p.visible_to_me?'invis':''}">
+    <td class="num">${p.id}</td><td>${esc(p.name)}</td>
+    <td>${p.alive?'存活':'死亡'}${p.in_vent?' · 管':''}</td>
+    <td class="num">${p.visible_to_me && p.distance!=null ? p.distance : '--'}</td>
+    <td>${p.visible_to_me && p.room ? esc(p.room) : '--'}</td></tr>`).join('');
+}
+
+function renderEnv(){
+  const bodies = st.nearby_bodies || [], sabs = st.sabotages || [], mtg = st.meeting, el = $('envKv');
+  let h = kv('尸体(7m)', bodies.length ? bodies.map(b =>
+      `<span style="color:var(--bad)">${esc(b.victim)}@${b.distance}m</span>`).join('<br>') : '<span class="muted">无</span>');
+  h += kv('破坏', sabs.length ? sabs.map(x => `${esc(x.type)}:${x.active?'<span style="color:var(--warn)">激活</span>':'正常'}`).join(' · ') : '<span class="muted">正常</span>');
+  h += kv('任务条', st.taskbar!=null ? `<div class="bar" style="margin-top:3px"><div style="width:${(st.taskbar*100).toFixed(0)}%"></div></div>` : '--');
+  if(mtg){
+    h += kv('会议', `${esc(mtg.state)} · 报告者 <span class="num">${mtg.reporter}</span>`);
+    h += kv('可投票', mtg.can_vote ? '<span style="color:var(--ok)">是</span>' : '否');
+    h += kv('已投票', mtg.did_vote ? `<span class="num">→ ${mtg.my_vote}</span>` : '未投');
+    const votes = (mtg.votes||[]).filter(v=>v.voted && v.for!==254 && v.for!==255).length;
+    h += kv('投票数', `<span class="num">${votes}/${(mtg.votes||[]).length}</span>`);
+  } else h += kv('会议', '<span class="muted">无</span>');
+  el.innerHTML = h;
+}
+
+/* ---------- 聊天 ---------- */
+function renderChatFromState(){
+  const el = $('chatList');
+  const msgs = (st.chat || []);
+  if(!msgs.length){ el.innerHTML = '<span class="muted">暂无(练习模式假人不发言,请从下方喂入)</span>'; return; }
+  el.innerHTML = msgs.slice(-30).map(m => `<div><b>${esc(m.name)}</b>: ${esc(m.text)}</div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+async function feedChat(){
+  const speaker = $('chatSpeaker').value.trim() || 'Red';
+  const text = $('chatText').value.trim();
+  if(!text) return;
+  await jpost('/api/meeting/feed', {speaker, text});
+  $('chatText').value = '';
+}
+async function feedVote(){
+  const t = $('voteTarget').value.trim();
+  await jpost('/api/meeting/feed', {type:'vote', target: t || 'skip'});
+}
+async function respondNow(){ await jpost('/api/meeting/respond', {}); }
+
+/* ---------- 事件流 ---------- */
+async function pollEvents(){
+  try{
+    const d = await jget('/api/events?since='+eventsSince);
+    if(d.events && d.events.length){
+      const el = $('events');
+      for(const e of d.events){
+        const div = document.createElement('div');
+        div.className = 'ev-' + (e.code||'');
+        div.textContent = `[${e.t ?? '?'}] ${e.code} ${e.actor ? '('+e.actor+')' : ''} ${e.note||''}`;
+        el.appendChild(div);
+      }
+      eventsSince = d.seq;
+      while(el.childNodes.length > 400) el.removeChild(el.firstChild);
+      if($('autoScroll').checked) el.scrollTop = el.scrollHeight;
+    }
+  }catch(e){}
+  setTimeout(pollEvents, 900);
+}
+
+/* ---------- 地图 ---------- */
+async function refreshMap(){
+  await jpost('/api/command', {type:'nav_dump'});
+  lastMapAt = performance.now();
+}
+async function pollMap(){
+  try{
+    const d = await jget('/api/map');
+    if(d.nav_dump && d.nav_dump !== mapDump){ mapDump = d.nav_dump; buildGridCanvas(); renderMap(); }
+    if(d.nav_path){ mapPath = d.nav_path; renderMap(); }
+  }catch(e){}
+  setTimeout(pollMap, 1500);
+}
+function maybeRefreshMap(){
+  if(st.phase === 'PLAYING' && performance.now() - lastMapAt > 8000){ lastMapAt = performance.now(); refreshMap(); }
+}
+function buildGridCanvas(){
+  if(!mapDump) return;
+  const gw = mapDump.gw, gh = mapDump.gh;
+  const c = document.createElement('canvas');
+  c.width = gw; c.height = gh;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(gw, gh);
+  for(let y=0; y<gh; y++){
+    const row = mapDump.rows[y] || '';
+    for(let x=0; x<gw; x++){
+      const ch = row[x] || '#';
+      let r=0,g=0,b=0,a=0;
+      if(ch === 'o'){ r=29; g=58; b=95; a=255; }
+      else if(ch === '.'){ r=36; g=50; b=68; a=255; }
+      const i = ((gh-1-y)*gw + x) * 4;   // canvas y 翻转(世界 y 向上)
+      img.data[i]=r; img.data[i+1]=g; img.data[i+2]=b; img.data[i+3]=a;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  gridCanvas = c;
+}
+function worldToCanvas(wx, wy, cw, ch){
+  const gw = mapDump.gw, gh = mapDump.gh;
+  const x = (wx - mapDump.min_x) / STEP / gw * cw;
+  const y = ch - (wy - mapDump.min_y) / STEP / gh * ch;
+  return [x, y];
+}
+function canvasToWorld(cx, cy, cw, ch){
+  const gw = mapDump.gw, gh = mapDump.gh;
+  const wx = mapDump.min_x + (cx / cw) * gw * STEP;
+  const wy = mapDump.min_y + ((ch - cy) / ch) * gh * STEP;
+  return [wx, wy];
+}
+function renderMap(){
+  const cv = $('map'); if(!cv) return;
+  const ctx = cv.getContext('2d');
+  const cw = cv.width, chh = cv.height;
+  ctx.fillStyle = '#0b0f15'; ctx.fillRect(0,0,cw,chh);
+  if(!mapDump){ ctx.fillStyle='#8b96a8'; ctx.font='14px Consolas'; ctx.fillText('等待 nav_dump…(点“刷新地图”)', 20, 30); return; }
+  if($('showGrid').checked && gridCanvas) ctx.drawImage(gridCanvas, 0, 0, cw, chh);
+  // 特殊边
+  for(const lk of (mapDump.links||[])){
+    const [x1,y1] = worldToCanvas(lk.a[0], lk.a[1], cw, chh);
+    const [x2,y2] = worldToCanvas(lk.b[0], lk.b[1], cw, chh);
+    ctx.strokeStyle = lk.kind === 'platform' ? '#e8c350' : '#2f7d4f';
+    ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // 路径
+  if($('showPath').checked && mapPath && mapPath.wp){
+    const wp = mapPath.wp;
+    ctx.strokeStyle = '#ffd75e'; ctx.lineWidth = 2; ctx.beginPath();
+    let first = true;
+    for(let i=0; i+1<wp.length; i+=2){
+      const [x,y] = worldToCanvas(wp[i], wp[i+1], cw, chh);
+      if(first){ ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    if(mapPath.goal_pos){
+      const [gx,gy] = worldToCanvas(mapPath.goal_pos[0], mapPath.goal_pos[1], cw, chh);
+      ctx.fillStyle = '#ffd75e'; ctx.beginPath(); ctx.arc(gx,gy,4,0,7); ctx.fill();
+    }
+  }
+  // 尸体
+  for(const b of (st.nearby_bodies||[])){
+    if(!b.position) continue;
+    const [x,y] = worldToCanvas(b.position.x, b.position.y, cw, chh);
+    ctx.fillStyle = '#ff5f5f'; ctx.beginPath(); ctx.arc(x,y,5,0,7); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.font='10px Consolas'; ctx.fillText('body', x+7, y+3);
+  }
+  // 玩家
+  const me = st.me;
+  for(const p of (st.players||[])){
+    if(!p.position) continue;
+    const [x,y] = worldToCanvas(p.position.x, p.position.y, cw, chh);
+    ctx.fillStyle = p.alive ? '#4da3ff' : '#8b96a8';
+    ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill();
+    ctx.fillStyle='#dbe2ee'; ctx.font='10px Consolas'; ctx.fillText(p.name||('#'+p.id), x+6, y+3);
+  }
+  if(me && me.position){
+    const [x,y] = worldToCanvas(me.position.x, me.position.y, cw, chh);
+    ctx.fillStyle = '#37d67a'; ctx.beginPath(); ctx.arc(x,y,6,0,7); ctx.fill();
+    ctx.fillStyle='#0b1220'; ctx.font='bold 10px Consolas'; ctx.fillText('ME', x+7, y+4);
+  }
+  // 目标
+  if(target){
+    const [x,y] = worldToCanvas(target.x, target.y, cw, chh);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(x-5,y-5,10,10);
+  }
+  const pos = (me && me.position) ? `ME (${me.position.x},${me.position.y})` : 'ME --';
+  $('mapInfo').textContent = `${pos} | 目标 ${target?`(${target.x.toFixed(1)},${target.y.toFixed(1)})`:'--'}`;
+}
+$('map').addEventListener('click', ev => {
+  if(!mapDump) return;
+  const cv = $('map'); const r = cv.getBoundingClientRect();
+  const cx = (ev.clientX - r.left) / r.width * cv.width;
+  const cy = (ev.clientY - r.top) / r.height * cv.height;
+  const [wx, wy] = canvasToWorld(cx, cy, cv.width, cv.height);
+  target = {x: wx, y: wy};
+  $('targetTxt').textContent = `(${wx.toFixed(1)}, ${wy.toFixed(1)})`;
+  renderMap();
+});
+async function sendNavPath(){
+  if(!target) return;
+  await jpost('/api/command', {type:'nav_path', to:[target.x, target.y]});
+}
+async function sendMoveTo(){
+  if(!target) return;
+  await jpost('/api/command', {type:'move_to', pos:[target.x, target.y], tolerance:0.6});
+}
+async function clearPath(){ mapPath = null; target = null; $('targetTxt').textContent='--'; renderMap(); }
+
+/* ---------- 脚本总控 ---------- */
+async function ctrlAction(action){
+  const body = {action};
+  if(action === 'start'){
+    body.mode = $('ctrlMode').value;
+    body.autostart = $('ctrlAutostart').checked;
+    body.map = 4;
+  }
+  try{
+    const r = await jpost('/api/control', body);
+    if(!r.ok) alert(r.error || '操作失败');
+  }catch(e){ alert('请求失败: ' + e.message); }
+  pollControl();
+}
+async function ctrlShutdown(){
+  if(!confirm('确定关闭整个 agent 脚本?(面板服务/桥连接都会停止,游戏不退出)')) return;
+  try{ await jpost('/api/control', {action:'shutdown'}); }catch(e){}
+  document.body.innerHTML = '<div style="padding:40px;font-size:16px;color:#8b96a8">agent 已关闭。重新启动: agent\start_ai.bat 或 python -m ai_agent.main</div>';
+}
+async function pollControl(){
+  try{
+    const c = await jget('/api/control');
+    const on = !!c.takeover;
+    const badge = $('ctrlBadge'); if(badge){ badge.textContent = on ? '接管中' : '已停止';
+      badge.style.color = on ? 'var(--ok)' : 'var(--dim)'; badge.style.borderColor = on ? 'var(--ok)' : 'var(--line)'; }
+    const top = $('ctrlBadgeTop'); if(top) top.textContent = '接管:' + (on ? 'ON' : 'OFF');
+    const info = $('ctrlInfo');
+    if(info) info.innerHTML = on
+      ? `模式 <b>${esc(c.mode)}</b> · 已运行 <b>${c.uptime||0}s</b> · 舞台 <b>${esc(c.phase||'--')}</b><br>${esc(c.last_action||'')}`
+      : `未接管。点「开始接管」后 AI 接手当前对局(勾选“开始新局”会先开一局)。`;
+    if(c.mode && $('ctrlMode')) $('ctrlMode').value = c.mode;
+    if($('btnStart')) $('btnStart').disabled = on;
+    if($('btnStop')) $('btnStop').disabled = !on;
+  }catch(e){}
+  setTimeout(pollControl, 2500);
+}
+
+/* ---------- 会议/行为状态轮询 ---------- */
+async function pollBehavior(){
+  try{
+    const b = await jget('/api/behavior');
+    $('behBadge').textContent = '行为:' + (b.enabled ? (b.mode_effective || b.mode) : 'off');
+    const el = $('behKv');
+    if(!b.enabled){ el.innerHTML = kv('状态','未启用','muted'); }
+    else el.innerHTML = kv('模式', esc(b.mode)) + kv('角色', esc(b.role||'--')) +
+      kv('动作', esc(b.action)) + kv('击杀/报告', `${b.kills||0}/${b.reports||0}`) +
+      kv('完成任务', b.tasks_done||0) +
+      kv('技能使用', `${b.abilities_used||0} <span class="muted small">(自动:${b.auto_abilities?'on':'off'})</span>`) +
+      kv('拉黑任务', `<span class="small">${Object.keys(b.blacklisted||{}).join(', ') || '无'}</span>`) +
+      kv('错误', `<span class="small">${esc(b.last_error||'')}</span>`);
+    if(b.mode) $('behMode').value = b.mode;
+    const aa = $('behAutoAb'); if(aa && aa.checked !== !!b.auto_abilities) aa.checked = !!b.auto_abilities;
+  }catch(e){}
+  setTimeout(pollBehavior, 2000);
+}
+async function setBehMode(){ await jpost('/api/behavior', {mode:$('behMode').value}); pollBehavior(); }
+async function setAutoAb(on){ await jpost('/api/behavior', {auto_abilities:on}); pollBehavior(); }
+
+async function pollMeeting(){
+  try{
+    const m = await jget('/api/meeting');
+    $('meetBadge').textContent = '会议AI:' + (m.enabled ? 'on' : 'off');
+    const el = $('meetKv');
+    const last = m.last;
+    el.innerHTML = kv('输入文件', `<span class="small">${esc(m.chat_file||'--')}</span>`) +
+      kv('已完成发言', m.statements ?? '--') +
+      kv('误差', `<span class="small">${esc(m.last_error||'')}</span>`);
+    if(last){
+      $('aiOut').textContent = JSON.stringify({say:last.say, vote:last.vote, latency_ms:last.latency_ms, model:last.model}, null, 1);
+    }
+  }catch(e){}
+  setTimeout(pollMeeting, 1800);
+}
+
+/* ---------- 语音会议 ---------- */
+let voiceStatus = null;
+async function pollVoice(){
+  try{
+    const v = await jget('/api/voice');
+    voiceStatus = v;
+    renderVoice(v);
+  }catch(e){}
+  setTimeout(pollVoice, 800);
+}
+async function voiceAction(action, extra){
+  const body = Object.assign({action}, extra||{});
+  const r = await jpost('/api/voice', body);
+  if(!r.ok) alert(r.error || '操作失败');
+}
+async function voiceToggle(){
+  const on = voiceStatus && voiceStatus.enabled;
+  await voiceAction(on ? 'disable' : 'enable');
+}
+async function voiceSetVoice(){
+  await voiceAction('set_voice', {voice: $('ttsVoice').value});
+}
+async function voiceTestTts(){
+  await voiceAction('test_tts', {text:'大家好,语音链路测试。'});
+}
+function renderVoice(v){
+  const badge = $('voiceBadge');
+  if(v.error && v.enabled === undefined){ badge.textContent='语音:无'; return; }
+  badge.textContent = '语音:' + (v.enabled ? (v.active ? '会议中' : '待命') : 'off');
+  const sb = $('voiceStateBadge');
+  sb.textContent = v.active ? (v.asr && v.asr.connected ? '转写中' : '连接中…') : (v.enabled ? '待命' : '停用');
+  sb.style.color = v.active ? 'var(--ok)' : 'var(--dim)';
+  const btn = $('btnVoiceToggle');
+  if(btn){ btn.textContent = v.enabled ? '停用语音' : '启用语音'; }
+  // 发言顺序 chips
+  const chips = $('turnChips');
+  if(v.speaking_order && v.speaking_order.length){
+    chips.innerHTML = v.speaking_order.map((n,i)=>{
+      const cur = i === v.turn_idx;
+      const done = v.spoken && v.spoken.includes(n);
+      const style = cur ? 'background:var(--accent);color:#0b1220;border-color:var(--accent)' :
+                    done ? 'opacity:.45' : '';
+      return `<span class="badge" style="${style};margin:1px 2px">${cur?'▶':''}${esc(n)}</span>`;
+    }).join('') + (v.is_my_turn ? ' <b style="color:var(--warn)">← 我!(' + esc(v.my_state) + ')</b>' : '');
+  } else chips.textContent = '(等待进会议)';
+  const kvEl = $('voiceKv');
+  kvEl.innerHTML =
+    kv('采集', v.capture && v.capture.running ? `<span style="color:var(--ok)">开</span>` : '<span style="color:var(--dim)">关</span>') +
+    kv('讯飞ASR', v.asr && v.asr.connected ? `<span style="color:var(--ok)">已连</span>(${v.asr.segments}句)` : `<span style="color:var(--bad)">断</span>`) +
+    kv('TTS', v.tts && v.tts.speaking ? '<span style="color:var(--warn)">播报中</span>' : '空闲') +
+    kv('当前发言', v.current_speaker ? esc(v.current_speaker) : '--') +
+    kv('我方状态', esc(v.my_state||'--') + (v.voted?' · 已投票':'')) +
+    kv('记忆', v.memory ? `${v.memory.games}局/${v.memory.players}人` : '--') +
+    (v.last_error ? kv('错误', `<span class="small" style="color:var(--bad)">${esc(v.last_error)}</span>`) : '');
+  $('micBar').style.width = Math.min(100, Math.round((v.capture ? v.capture.peak : 0) / 200)) + '%';
+  $('voiceLive').textContent = v.live_text ? '♪ ' + v.live_text : '';
+  const tr = $('voiceTranscript');
+  const items = v.transcript || [];
+  tr.innerHTML = items.length ? items.map(u =>
+    `<div style="padding:1px 0"><b style="color:var(--accent)">${esc(u.speaker)}</b>: ${esc(u.text)}</div>`).join('') :
+    '<span class="muted">暂无转写(会议开始后自动采集 YY 语音)</span>';
+  tr.scrollTop = tr.scrollHeight;
+  const bd = $('voiceBindings');
+  const entries = Object.entries(v.bindings || {});
+  bd.innerHTML = entries.length ? entries.map(([rl,name]) => {
+    const opts = (v.speaking_order||[]).map(n=>`<option ${n===name?'selected':''}>${esc(n)}</option>`).join('');
+    return `<span style="margin-right:10px">音色${esc(rl)} → <select onchange="voiceAction('rebind',{rl:${rl},player:this.value})">${opts}</select></span>`;
+  }).join('') : '<span class="muted">暂无绑定(自动按发言顺序绑定,绑定错可在下拉改)</span>';
+  const sus = $('voiceSus');
+  const susItems = Object.entries(v.suspicion || {});
+  sus.innerHTML = susItems.length ? susItems.map(([n,val]) =>
+    `<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:70px;overflow:hidden;text-overflow:ellipsis">${esc(n)}</span>
+     <div class="bar" style="flex:1"><div style="width:${val}%;background:${val>=70?'var(--bad)':val>=45?'var(--warn)':'var(--ok)'}"></div></div><span class="num">${val}</span></div>`).join('') :
+    '<span class="muted">--</span>';
+  const my = $('voiceMy');
+  if(v.my_last) my.textContent = `上次发言 ${(v.my_last.latency_ms||0)}ms${v.my_last.fallback?'(兜底)':''}`;
+  else my.textContent = '';
+  if(v.tts && v.tts.voice) $('ttsVoice').value = v.tts.voice;
+}
+
+/* ---------- 整局托管 ---------- */
+let sessState = null;
+async function sessStart(){
+  const body = {
+    action: 'start',
+    host_kind: $('sessKind').value,
+    bots: parseInt($('sessBots').value || '0', 10),
+    min_players: parseInt($('sessMin').value || '4', 10),
+    auto_next: $('sessAutoNext').checked,
+    auto_start: $('sessAutoStart').checked,
+    max_games: parseInt($('sessMaxGames').value || '0', 10),
+  };
+  const r = await jpost('/api/session', body);
+  if(!r.ok) alert(r.error || '启动失败');
+  pollSession();
+}
+async function sessAction(action){
+  const r = await jpost('/api/session', {action});
+  if(r && r.ok === false) alert(r.error || '操作失败');
+  pollSession();
+}
+async function pollSession(){
+  try{
+    const s = await jget('/api/session');
+    sessState = s;
+    renderSession(s);
+  }catch(e){}
+  setTimeout(pollSession, 1200);
+}
+function renderSession(s){
+  if(!s || s.error){ $('sessBadge').textContent = '未启用'; return; }
+  const on = !!s.enabled;
+  const b = $('sessBadge');
+  b.textContent = on ? '托管中' : '待命';
+  b.style.color = on ? 'var(--ok)' : 'var(--dim)';
+  b.style.borderColor = on ? 'var(--ok)' : 'var(--line)';
+  if($('sessStart')) $('sessStart').disabled = on;
+  if($('sessStop')) $('sessStop').disabled = !on;
+  const lobby = s.lobby || {};
+  const code = s.game_code || lobby.code || '--';
+  const modeTxt = {local:'本地房', online:'在线房', freeplay:'练习'}[s.host_kind] || s.host_kind;
+  $('sessKv').innerHTML =
+    kv('形态', esc(modeTxt)) +
+    kv('阶段', esc(s.phase||'--') + ` <span class="muted">(${s.phase_sec||0}s)</span>`) +
+    kv('房间码', `<b class="num" style="font-size:14px;color:var(--warn)">${esc(code)}</b>${s.am_host?' <span class="muted small">房主</span>':''}`) +
+    kv('大厅人数', `<span class="num">${s.players ?? '--'}</span>${s.bots?` <span class="muted small">含 ${s.bots} bot 目标</span>`:''}`) +
+    kv('战绩', `开始 <b>${s.games_started||0}</b> 局 · 完成 <b>${s.games_finished||0}</b> 局 · 会议 <b>${s.meetings_total||0}</b>`) +
+    kv('动作', `<span class="small">${esc(s.last_action||'--')}</span>`) +
+    (s.last_error ? kv('错误', `<span class="small" style="color:var(--bad)">${esc(s.last_error)}</span>`) : '');
+}
+
+/* ---------- 指令 ---------- */
+function nearestTargetId(){
+  const vis = (st.players||[]).filter(p=>p.alive && p.visible_to_me && p.distance!=null);
+  if(!vis.length) return 1;
+  return vis.reduce((a,b)=> (a.distance||99) <= (b.distance||99) ? a : b).id;
+}
+async function cmd(obj){ await jpost('/api/command', obj); }
+async function sendCmd(){
+  try{ const obj = JSON.parse($('cmdInput').value); await cmd(obj); }
+  catch(e){ alert('JSON 解析错误: ' + e.message); }
+}
+$('cmdInput').addEventListener('keydown', e => { if(e.key==='Enter') sendCmd(); });
+
+// 房间下拉
+ROOMS.forEach(r => { const o=document.createElement('option'); o.value=r; o.textContent=r; $('roomSel').appendChild(o); });
+
+// 原始 state 显示(低频)
+setInterval(()=>{ $('raw').textContent = JSON.stringify(st, null, 1); }, 1000);
+
+/* 启动 */
+refreshMap(); pollState(); pollEvents(); pollMap(); pollBehavior(); pollMeeting(); pollControl(); pollVoice(); pollSession();
+</script>
+</body>
+</html>

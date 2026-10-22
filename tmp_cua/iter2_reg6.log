@@ -1,0 +1,96 @@
+== 连接桥 OK,hello ==
+== 开局:freeplay Airship ==
+  [PASS] debug_start ack {'type': 'ack', 'ref': 2, 'cmd': 'debug_start', 'ok': True, 'err': 'freeplay map=4'}
+  [PASS] 进入 PLAYING phase=PLAYING
+== A. 导航图 + move_to ==
+  起点: pos={'x': -0.66, 'y': -0.86} room=Engine
+  [PASS] move_to ack {'type': 'ack', 'ref': 5, 'cmd': 'move_to', 'ok': True}
+    [event] MOVE_DONE dest=Brig
+  [PASS] 移动完成事件 dest=Brig
+  [PASS] 到达 Brig 附近 room=Brig pos={'x': -0.6, 'y': 8.49}
+  终点: pos={'x': -0.6, 'y': 8.49} room=Brig
+== B. open_task(优先挑多阶段任务) ==
+    [event] TASK_START task=0(FixWiring) console@16.2,2.9 range=0.68
+    [event] MOVE_DONE dest=task_0_console
+    [event] TASK_PANEL_OPEN task=0
+  目标任务: 0 FixWiring steps=3
+  [PASS] open_task ack {'type': 'ack', 'ref': 6, 'cmd': 'open_task', 'ok': True}
+  [PASS] 面板真实打开 task=0
+    [event] TASK_STEP task=0 step#1 done=False
+    [event] TASK_STEP task=0(FixWiring) step=1
+    [event] TASK_START task=0(FixWiring) console@35.2,3.9 range=0.68
+    [event] MOVE_DONE dest=task_0_console
+    [event] TASK_PANEL_OPEN task=0
+    [event] TASK_STEP task=0 step#2 done=False
+    [event] TASK_STEP task=0(FixWiring) step=2
+    [event] TASK_START task=0(FixWiring) console@-7.0,1.5 range=0.68
+    [event] MOVE_DONE dest=task_0_console
+    [event] TASK_PANEL_OPEN task=0
+    [event] TASK_STEP task=0 step#3 done=True
+    [event] TASK_FLOW_DONE task=0 steps=3
+    [event] TASK_DONE task=0(FixWiring)
+  [PASS] 任务流完成 dest=Brig
+  [PASS] 任务状态 done=true [{'id': 0, 'name': 'FixWiring', 'done': True, 'room': 'Engine', 'step': 3, 'max_step': 3}]
+== C. 击杀/报告/会议 ==
+  [PASS] 设为内鬼(freeplay) {'type': 'ack', 'ref': 7, 'cmd': 'debug_set_role', 'ok': True}
+  目标: 假人 1 dist=1.91
+    [event] KILL_CMD dist=1.9
+    [event] DEATH reason=unknown killer=
+  [PASS] kill 指令接受 {'type': 'ack', 'ref': 8, 'cmd': 'kill', 'ok': True}
+  [PASS] 击杀确认(死亡事件) reason=unknown killer=
+    [event] MEETING_START state=Animating
+  [PASS] report 指令 {'type': 'ack', 'ref': 9, 'cmd': 'report', 'ok': True}
+  [PASS] 进入 MEETING phase=MEETING
+  [PASS] 会议快照(reporter/order) {'reporter': 0, 'state': 'Animating', 'discussion_timer': 0, 'can_vote': False, 'did_vote': False, 'my_vote': 255, 'votes': [{'id': 0, 'voted': False, 'for': 255}, {'id': 1, 'voted': False, 'for': 255}, {'id': 2, 'voted': False, 'for': 255}, {'id': 3, 'voted': False, 'for': 255}, {'id': 4, 'voted': False, 'for': 255}, {'id': 5, 'voted': False, 'for': 255}, {'id': 6, 'voted': False, 'for': 255}, {'id': 7, 'voted': False, 'for': 255}, {'id': 8, 'voted': False, 'for': 255}, {'id': 9, 'voted': False, 'for': 255}], 'order': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]}
+  [PASS] 守卫:会议中 move_to 被拒 {'type': 'ack', 'ref': 10, 'cmd': 'move_to', 'ok': False, 'err': 'phase_guard:MEETING'}
+    [event] VOTE target=253
+  [PASS] vote skip 指令 {'type': 'ack', 'ref': 28, 'cmd': 'vote', 'ok': True}
+  [PASS] 投票事件 target=253
+    [event] MEETING_FF force skip all
+    [event] MEETING_END 
+  [PASS] 会议结束回 PLAYING phase=PLAYING
+== D. 边界用例 ==
+  [PASS] 守卫:非本人任务被拒 {'type': 'ack', 'ref': 32, 'cmd': 'open_task', 'ok': False, 'err': 'task_not_mine'}
+    跳过任务 0 SubmitScan: task_no_console
+    [event] TASK_START task=1(FuelEngines) console@39.0,1.5 range=0.98
+    [event] MOVE_DONE dest=task_1_console
+    [event] TASK_PANEL_OPEN task=1
+  [PASS] 守卫:面板打开时 move_to 被拒 {'type': 'ack', 'ref': 35, 'cmd': 'move_to', 'ok': False, 'err': 'panel_open'}
+    [event] TASK_ABORT task=1 reason=panel_closed
+    [event] TASK_START task=1(FuelEngines) console@39.0,1.5 range=0.98
+    [event] MOVE_DONE dest=task_1_console
+    [event] TASK_PANEL_OPEN task=1
+  [PASS] 守卫:关面板触发 TASK_ABORT 并重走 task=1 reason=panel_closed
+  [PASS] 关面板后自动重开 
+    [event] TASK_ABORT task=1 reason=panel_closed
+    [event] TASK_START task=1(FuelEngines) console@39.0,1.5 range=0.98
+    [event] MOVE_DONE dest=task_1_console
+    [event] TASK_PANEL_OPEN task=1
+  [PASS] 守卫:未知指令回执 {'type': 'ack', 'ref': 38, 'cmd': 'flap_wings', 'ok': False, 'err': 'unknown_command'}
+
+========== 汇总 ==========
+  [PASS] debug_start ack
+  [PASS] 进入 PLAYING
+  [PASS] move_to ack
+  [PASS] 移动完成事件
+  [PASS] 到达 Brig 附近
+  [PASS] open_task ack
+  [PASS] 面板真实打开
+  [PASS] 任务流完成
+  [PASS] 任务状态 done=true
+  [PASS] 设为内鬼(freeplay)
+  [PASS] kill 指令接受
+  [PASS] 击杀确认(死亡事件)
+  [PASS] report 指令
+  [PASS] 进入 MEETING
+  [PASS] 会议快照(reporter/order)
+  [PASS] 守卫:会议中 move_to 被拒
+  [PASS] vote skip 指令
+  [PASS] 投票事件
+  [PASS] 会议结束回 PLAYING
+  [PASS] 守卫:非本人任务被拒
+  [PASS] 守卫:面板打开时 move_to 被拒
+  [PASS] 守卫:关面板触发 TASK_ABORT 并重走
+  [PASS] 关面板后自动重开
+  [PASS] 守卫:未知指令回执
+  24/24 PASS

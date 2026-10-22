@@ -1,0 +1,26 @@
+D:\games\au\AI among us\agent\ai_agent\main.py:138: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+D:\games\au\AI among us\agent\ai_agent\main.py:150: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("shutdown")
+2026-10-20 21:39:57,101 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 21:39:57,101 INFO ai_agent.behavior: behavior engine started (mode=crew)
+2026-10-20 21:39:57,102 INFO ai_agent.meeting: meeting pipeline started (file=D:\games\au\AI among us\agent\data\meeting_chat.jsonl)
+2026-10-20 21:39:57,103 INFO ai_agent.bridge: bridge connected
+2026-10-20 21:39:58,106 INFO root: autostart: debug_start freeplay map=4
+2026-10-20 21:40:00,724 INFO ai_agent.behavior: task 0 blacklisted: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+2026-10-20 21:40:26,954 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 21:40:30,009 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 21:40:33,067 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 21:40:36,112 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 21:40:39,149 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 21:40:42,196 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...

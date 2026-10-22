@@ -1,0 +1,16 @@
+== 自主验收 mode=impostor 时长=240s ==
+起点 {'x': 1.23, 'y': -12.46} 角色=Impostor 阵营=Impostor
+[   0s] action='hunt' tasks=0/5 kills=0 reports=0 err=-
+[   3s] action='kill_cd 13.3s' tasks=0/5 kills=1 reports=0 err=-
+[   6s] action='kill_cd 10.3s' tasks=0/5 kills=1 reports=0 err=-
+[   9s] action='kill_cd 7.3s' tasks=0/5 kills=1 reports=0 err=-
+[  12s] action='kill_cd 4.2s' tasks=0/5 kills=1 reports=0 err=-
+[  15s] action='kill_cd 1.6s' tasks=0/5 kills=1 reports=0 err=-
+[  18s] action='hunt' tasks=0/5 kills=1 reports=0 err=-
+[  21s] action='hunt' tasks=0/5 kills=1 reports=0 err=-
+[  30s] action='kill_cd 14.5s' tasks=0/5 kills=2 reports=0 err=-
+已完成 2 次击杀
+
+== 结果 ==
+tasks=0/5 kills=2 reports=0 report_acks=0 move_failed=0 last_err=None
+PASS

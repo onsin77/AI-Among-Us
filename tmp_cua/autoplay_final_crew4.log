@@ -1,0 +1,37 @@
+== 自主验收 mode=crew 时长=320s ==
+起点 {'x': 20.58, 'y': 4.75} 角色=Crewmate 阵营=Crew
+[   0s] action='task 1' tasks=0/4 kills=0 reports=0 err=task 0: no_approach(console@16.2,16.3 range=0.98)
+[   6s] action='walk_task PutAwayPistols' tasks=0/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@6.0,16.4 range=0.98)
+[   9s] action='task 2' tasks=0/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@6.0,16.4 range=0.98)
+[  39s] action='task 3' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@6.0,16.4 range=0.98)
+[  54s] action='no_task' tasks=2/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@6.0,16.4 range=0.98)
+[  63s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[  69s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[  78s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[  87s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[  96s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 106s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 109s] action='walk_task EnterIdCode' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 112s] action='task 0' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 139s] action='no_task' tasks=2/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 145s] action='no_task' tasks=2/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 163s] action='no_task' tasks=2/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 172s] action='no_task' tasks=2/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 181s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 187s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 206s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 215s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 224s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 230s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 239s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 248s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 257s] action='task 0' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 281s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 290s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 299s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+[ 308s] action='no_task' tasks=2/4 kills=0 reports=0 err=move_to: not_found:room_on_map
+
+== 结果 ==
+tasks=2/4 kills=0 reports=0 report_acks=0 move_failed=3 last_err=move_to: not_found:room_on_map
+[FAIL] 个人任务未全部完成 (2/4)
+FAIL

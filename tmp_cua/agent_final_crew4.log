@@ -1,0 +1,30 @@
+D:\games\au\AI among us\agent\ai_agent\main.py:138: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+D:\games\au\AI among us\agent\ai_agent\main.py:150: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("shutdown")
+2026-10-20 23:39:39,479 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 23:39:39,483 INFO ai_agent.behavior: behavior engine started (mode=crew)
+2026-10-20 23:39:39,484 INFO ai_agent.meeting: meeting pipeline started (file=D:\games\au\AI among us\agent\data\meeting_chat.jsonl)
+2026-10-20 23:39:39,484 INFO ai_agent.bridge: bridge connected
+2026-10-20 23:39:40,488 INFO root: autostart: debug_start freeplay map=4
+2026-10-20 23:39:43,139 INFO ai_agent.behavior: task 0 blacklisted: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+2026-10-20 23:40:00,162 INFO ai_agent.behavior: task 1 blacklisted: task=1 reason=no_approach(console@6.0,16.4 range=0.98)
+2026-10-20 23:42:11,250 INFO ai_agent.behavior: task 0 blacklisted: task=0 reason=walk_stuck
+2026-10-20 23:44:35,195 INFO ai_agent.behavior: task 0 blacklisted: task=0 reason=walk_stuck
+2026-10-20 23:45:31,731 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 23:45:34,779 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 23:45:37,845 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 23:45:40,899 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 23:45:43,960 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 23:45:46,993 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...
+2026-10-20 23:45:50,046 INFO ai_agent.bridge: connecting to L1 bridge at 127.0.0.1:47600 ...

@@ -1,0 +1,24 @@
+public enum SanctionReasons
+{
+	None,
+	ImpersonationCeleb,
+	Spamming,
+	InappropriateNameUnsportsmanlike,
+	UnsportsmanlikeConduct,
+	ImpersonationDevelopers,
+	InappropriateChatPersonalInfo,
+	InappropriateNameDerogatory,
+	InappropriateNameNsfw,
+	Bullying,
+	CheatingHacking,
+	InappropriateChatDating,
+	WeaponizingRules,
+	RepeatOffender3,
+	SexualMisconduct,
+	Doxing,
+	IllegalActivity,
+	Harassment,
+	SelfHarmPromotion,
+	RepeatOffender10,
+	InvalidUser
+}

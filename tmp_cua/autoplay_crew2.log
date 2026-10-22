@@ -1,0 +1,43 @@
+== 自主验收 mode=crew 时长=380s ==
+起点 {'x': -4.56, 'y': 9.53} 角色=Crewmate 阵营=Crew
+[   0s] action='task 1' tasks=0/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[  24s] action='task 2' tasks=0/4 kills=0 reports=0 err=task 1 abort: task=1 reason=walk_stuck
+[  51s] action='task 3' tasks=0/4 kills=0 reports=0 err=task 2 abort: task=2 reason=walk_stuck
+[  93s] action='no_task' tasks=0/4 kills=0 reports=0 err=task 3 abort: task=3 reason=walk_stuck
+[ 102s] action='no_task' tasks=0/4 kills=0 reports=0 err=task 3 abort: task=3 reason=walk_stuck
+[ 108s] action='no_task' tasks=0/4 kills=0 reports=0 err=task 3 abort: task=3 reason=walk_stuck
+[ 118s] action='task 0' tasks=0/4 kills=0 reports=0 err=task 3 abort: task=3 reason=walk_stuck
+[ 124s] action='no_task' tasks=0/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 133s] action='no_task' tasks=0/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 139s] action='no_task' tasks=0/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 145s] action='task 1' tasks=0/4 kills=0 reports=0 err=task 0 abort: task=0 reason=walk_stuck
+[ 172s] action='task 2' tasks=0/4 kills=0 reports=0 err=task 1 abort: task=1 reason=walk_stuck
+[ 190s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=walk_stuck
+[ 199s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=walk_stuck
+[ 205s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=walk_stuck
+[ 214s] action='task 3' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=walk_stuck
+[ 242s] action='walk_task EnterIdCode' tasks=1/4 kills=0 reports=0 err=task 3 abort: task=3 reason=walk_stuck
+[ 245s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 0 abort: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+[ 251s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 0 abort: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+[ 257s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 0 abort: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+[ 266s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 0 abort: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+[ 275s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 0 abort: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+[ 290s] action='walk_task StartFans' tasks=1/4 kills=0 reports=0 err=task 0 abort: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+[ 293s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@28.0,-0.8 range=0.98)
+[ 299s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@28.0,-0.8 range=0.98)
+[ 308s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@28.0,-0.8 range=0.98)
+[ 317s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@28.0,-0.8 range=0.98)
+[ 327s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@28.0,-0.8 range=0.98)
+[ 336s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@28.0,-0.8 range=0.98)
+[ 342s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@28.0,-0.8 range=0.98)
+[ 351s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@28.0,-0.8 range=0.98)
+[ 360s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 1 abort: task=1 reason=no_approach(console@28.0,-0.8 range=0.98)
+[ 363s] action='walk_task EnterIdCode' tasks=1/4 kills=0 reports=0 err=task 3 abort: task=3 reason=no_approach(console@17.6,-3.7 range=0.98)
+[ 366s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 0 abort: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+[ 369s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 0 abort: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+[ 378s] action='no_task' tasks=1/4 kills=0 reports=0 err=task 0 abort: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+
+== 结果 ==
+tasks=1/4 kills=0 reports=0 report_acks=0 move_failed=8 last_err=task 0 abort: task=0 reason=no_approach(console@16.2,16.3 range=0.98)
+[FAIL] 个人任务未全部完成 (1/4)
+FAIL
