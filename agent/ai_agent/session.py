@@ -89,8 +89,10 @@ class SessionManager:
         self.games_finished = 0
         self.meetings_total = 0
         self.last_action = "idle"
+        self._action_at = 0.0
         self.last_error: str | None = None
         self.started_at: float | None = None
+        self._bg_tasks: set[asyncio.Task] = set()
 
     # ---------- 生命周期 ----------
 
@@ -219,7 +221,9 @@ class SessionManager:
 
     def _on_phase(self, prev: str | None, cur: str | None) -> None:
         now = time.time()
-        if cur == "LOBBY" and prev in ("MENU", "ENDED", None):
+        # 任何非 LOBBY 相位回到大厅都要复位:对局中途回大厅(掉线/被踢)不清零的话,
+        # _start_tries 耗尽后本进程内永远卡在"大厅不开局"
+        if cur == "LOBBY" and prev != "LOBBY":
             self._options_sent = False
             self._bots_spawned = False
             self._end_sent = False
@@ -229,16 +233,19 @@ class SessionManager:
             self._start_sent_at = 0.0
             self._next_sent = False
         if cur == "PLAYING" and prev == "MEETING" and self.cfg.bots > 0:
-            asyncio.ensure_future(self._send({"type": "debug_gather_bots"}))
+            self._bg(self._send({"type": "debug_gather_bots"}))
         if cur == "PLAYING" and prev != "PLAYING":
             self._saw_bots = False
-        if cur == "PLAYING" and prev == "LOBBY":
+        # MENU→PLAYING = freeplay 直开(不经大厅),也要计局并重置计时,
+        # 否则 freeplay 的 max_games 永不生效、bot 补位计时用的是上局的时间
+        if cur == "PLAYING" and prev in ("LOBBY", "MENU"):
             self.games_started += 1
             self._playing_since = now
             self._end_sent = False
             self._last_meeting_called_at = now          # 开局至少 12s 内不主动开会(避开开场动画)
             self._last_kill_seen = max([ev.get("_seq", 0) for ev in list(self.world.events)[-30:]] or [0])
             self.last_action = f"game #{self.games_started} started"
+            self._action_at = now
             log.info("session: game #%d started", self.games_started)
         if cur == "MEETING" and prev == "PLAYING":
             self.meetings_total += 1
@@ -289,11 +296,13 @@ class SessionManager:
         players = int(lobby.get("players") or 0)
         elapsed = time.time() - self._phase_since
 
-        # 0) 先落一次开局参数(内鬼数/讨论/投票/刀速)。开局前必须确保,否则可能 0 内鬼直接判负
+        # 0) 先落一次开局参数(内鬼数/讨论/投票/刀速)。开局前必须确保,否则可能 0 内鬼直接判负;
+        #    发送失败(桥瞬断)不能标记已发——本局会带着错误选项开局且无重试
         if not self._options_sent:
-            await self._send_options()
-            self._options_sent = True
-            self.last_action = "set_game_options"
+            if await self._send_options():
+                self._options_sent = True
+                self.last_action = "set_game_options"
+                self._action_at = time.time()
             return
 
         # 1) 自动开局
@@ -326,11 +335,14 @@ class SessionManager:
         if self.cfg.max_meetings and self.meetings_total >= self.cfg.max_meetings:
             if time.time() - self._leave_sent_at > 6.0:
                 self._leave_sent_at = time.time()
-                asyncio.ensure_future(self._send({"type": "leave_game"}))
+                self._bg(self._send({"type": "leave_game"}))
                 self.last_action = "max_meetings reached, leave game"
+                self._action_at = time.time()
                 self.meetings_total = 0
                 self._host_sent_at = 0.0
-        self.last_action = self.last_action if self.last_action.startswith("game") else "playing"
+        # 空闲回写 "playing":刚设置的 spawn_bots/call meeting 等动作保留 5s 可见
+        if time.time() - self._action_at > 5.0 and not self.last_action.startswith("game"):
+            self.last_action = "playing"
 
     async def _bot_spawn_tick(self) -> None:
         """bot 局:开局(过场结束)后再补 bot,避免开场动画卡死。"""
@@ -356,6 +368,7 @@ class SessionManager:
         ok = await self._send({"type": "spawn_bots", "count": target - players})
         self._bots_spawned = self._bots_spawned or ok
         self.last_action = f"spawn_bots {target - players} (have {players})"
+        self._action_at = now
 
     async def _bot_gather_tick(self) -> None:
         """bot 局:定期把 dummy 聚到 AI 身边。假人不会移动/不会找人,否则 AI 会一直找不到目标。"""
@@ -389,6 +402,7 @@ class SessionManager:
         self._end_sent = True
         await self._send({"type": "debug_end_game", "reason": "ImpostorByKill"})
         self.last_action = "bot mode: force end (1v1)"
+        self._action_at = time.time()
         log.info("session: bot-mode force end game (1v1)")
 
     async def _bot_meeting_tick(self) -> None:
@@ -421,6 +435,7 @@ class SessionManager:
         self._last_meeting_called_at = now
         await self._send({"type": "debug_call_meeting"})
         self.last_action = "bot mode: call meeting"
+        self._action_at = now
         log.info("session: bot-mode call meeting (new_kill=%s)", new_kill)
 
     async def _meeting_tick(self) -> None:
@@ -470,8 +485,14 @@ class SessionManager:
 
     # ---------- 工具 ----------
 
-    async def _send_options(self) -> None:
-        await self._send({
+    def _bg(self, coro) -> None:
+        """发射后不管的发送任务:持引用防 GC,异常记日志防静默。"""
+        t = asyncio.get_running_loop().create_task(coro)
+        self._bg_tasks.add(t)
+        t.add_done_callback(self._bg_tasks.discard)
+
+    async def _send_options(self) -> bool:
+        return await self._send({
             "type": "set_game_options",
             "num_impostors": self.cfg.num_impostors,
             "discussion_time": self.cfg.discussion_time,

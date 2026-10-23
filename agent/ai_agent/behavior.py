@@ -167,6 +167,9 @@ class BehaviorEngine:
                 self._meeting_seen = False
                 self._pending_kill_target = None
                 self._pending_report = False
+                # 散会后重置任务计时:开会的时间不应计入 150s 任务看门狗(否则误拉黑)
+                if self._tasks.active_id is not None:
+                    self._tasks.started_at = time.time()
             return
 
         # 开场动画期间角色尚未确定(默认船员),绝不能行动:否则会误开任务面板
@@ -339,9 +342,10 @@ class BehaviorEngine:
         # 1) 报尸优先(可见尸体列表已由 L1 做距离/LOS 过滤)
         bodies = [b for b in (st.get("nearby_bodies") or []) if not b.get("reported")]
         if bodies:
-            b = min(bodies, key=lambda x: x.get("distance") or 99)
+            # 注意 distance==0.0 是合法值(贴脸),不能用 or 兜底(0 会被当 falsy 排到最后)
+            b = min(bodies, key=lambda x: 99.0 if x.get("distance") is None else x["distance"])
             d = b.get("distance")
-            if d is not None and d <= 5.2:
+            if d is not None and d <= self.cfg.report_range + 0.2:
                 ok = await self._send({"type": "report"})
                 if ok:
                     self._reports += 1

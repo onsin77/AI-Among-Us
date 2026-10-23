@@ -1,9 +1,0 @@
-起点:{'x': -0.6, 'y': 8.49} room=Brig
-目标假人 8 @ [-8.34, 11.81]
-kill ok=True death_event=True
-会议:state=Animating can_vote=False votes=10
-可投票:True
-chat 回合:OK -> [{'name': '唯心Onsin', 'text': 'E2E chat 3225', 't': 720.3, 'mine': True}]
-AI: say='Blue 和 Red 说法对不上，但光凭嘴说没法判断，我先跳，别误票好人。' vote='skip' 891ms
-AI chat 到达游戏:OK; did_vote=True my_vote=253
-[PASS] 端到端会议链路(击杀→报告→会议字段→chat 采集→模型发言/投票→散会)

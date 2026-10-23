@@ -52,11 +52,9 @@ class Controller:
         if autostart and (self.world.state or {}).get("phase") != "PLAYING":
             ok = await self.bridge.send_command({"type": "debug_start", "mode": "freeplay", "map": map_id})
             self.last_action = f"debug_start freeplay map={map_id} queued={ok}"
-            # 等进入 PLAYING(最多 60s),失败也继续(可能已在局内)
-            for _ in range(60):
-                if (self.world.state or {}).get("phase") == "PLAYING":
-                    break
-                await asyncio.sleep(1.0)
+            # 等开局放到后台:行为引擎本就只在 PLAYING 行动,阻塞 HTTP handler 60s 只会让面板假死
+            self._autostart_watch = asyncio.get_running_loop().create_task(
+                self._watch_playing())
         self.mode = mode
         self.behavior.cfg.mode = mode
         self.meeting.cfg.enabled = True
@@ -68,12 +66,24 @@ class Controller:
         log.info("takeover started: mode=%s autostart=%s", mode, autostart)
         return self.status()
 
+    async def _watch_playing(self) -> None:
+        for _ in range(60):
+            if (self.world.state or {}).get("phase") == "PLAYING":
+                self.last_action = "autostart: PLAYING"
+                return
+            await asyncio.sleep(1.0)
+        self.last_action = "autostart: not in PLAYING after 60s (continue anyway)"
+
     async def stop(self) -> dict[str, Any]:
         self.behavior.cfg.mode = "monitor"
         self.meeting.cfg.enabled = False
         self.takeover = False
         self.mode = "monitor"
         self.started_at = None
+        w = getattr(self, "_autostart_watch", None)
+        if w is not None and not w.done():
+            w.cancel()
+        self._autostart_watch = None
         # 停住游戏里的角色:停导航 + 关面板(面板会让 TaskPrivilege 自行 abort)
         await self.bridge.send_command({"type": "move_stop"})
         await self.bridge.send_command({"type": "minigame_close"})

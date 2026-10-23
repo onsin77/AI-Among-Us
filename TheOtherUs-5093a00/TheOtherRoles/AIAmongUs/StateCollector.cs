@@ -793,6 +793,9 @@ internal sealed class StateCollector
 
     private static bool IsPlayPhase(AIPhase phase) => phase is AIPhase.PLAYING or AIPhase.MEETING;
 
+    /// <summary>每局开始时由 AIHub 调:清掉错误日志配额,新对局的问题还能被看见。</summary>
+    public static void ResetErrorBudget() => _errCounter = 0;
+
     private static string ErrFragment(Exception e, string section)
     {
         if (_errCounter < 40)

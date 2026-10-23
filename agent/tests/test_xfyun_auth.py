@@ -1,15 +1,27 @@
 # -*- coding: utf-8 -*-
-"""讯飞 RTASR-LLM 连通性冒烟:XTTS 生成两段不同音色语音 -> 流式发给讯飞 -> 校验转写与 rl 说话人分离。"""
+"""讯飞 RTASR-LLM 连通性冒烟:XTTS 生成两段不同音色语音 -> 流式发给讯飞 -> 校验转写与 rl 说话人分离。
+
+凭据从 agent/config.ini([asr] 段)或环境变量 XF_APP_ID/XF_API_KEY/XF_API_SECRET 读取,
+绝不硬编码提交(历史版本曾把真实密钥写在这里,已出库并轮换)。
+"""
 import asyncio, base64, hashlib, hmac, json, time, urllib.parse, urllib.request, uuid, sys, wave
+import os
 from pathlib import Path
 
-APP_ID = "b1fd0d65"
-API_KEY = "7dab4ad810d56fa781132d28b442ff50"   # accessKeyId
-API_SECRET = "ZGM5MWYyZmExMjcwZjM5ZWNlMWE2MGUy"  # accessKeySecret
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from ai_agent.config import Config  # noqa: E402
+
+_cfg = Config.load()
+APP_ID = os.environ.get("XF_APP_ID", _cfg.asr_app_id)
+API_KEY = os.environ.get("XF_API_KEY", _cfg.asr_api_key)
+API_SECRET = os.environ.get("XF_API_SECRET", _cfg.asr_api_secret)
+if not (APP_ID and API_KEY and API_SECRET):
+    print("[SKIP] 讯飞凭据未配置(config.ini [asr] 段或 XF_APP_ID/XF_API_KEY/XF_API_SECRET)")
+    sys.exit(0)
 URL = "wss://office-api-ast-dx.iflyaisol.com/ast/communicate/v1"
 
 def build_auth_url():
-    utc = time.strftime("%Y-%m-%dT%H:%M:%S+0800", time.localtime())
+    utc = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
     params = {
         "accessKeyId": API_KEY,
         "appId": APP_ID,

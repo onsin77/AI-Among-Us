@@ -52,8 +52,6 @@ public static class MiniJson
         return rounded.ToString(fmt, CultureInfo.InvariantCulture);
     }
 
-    public static string I(long v) => v.ToString(CultureInfo.InvariantCulture);
-
     // ---------- 读侧 ----------
 
     public class JsonException : Exception
@@ -65,21 +63,26 @@ public static class MiniJson
     {
         if (json == null) throw new JsonException("null input");
         int i = 0;
-        var v = ParseValue(json, ref i);
+        var v = ParseValue(json, ref i, 0);
         SkipWs(json, ref i);
         if (i != json.Length) throw new JsonException($"trailing chars at {i}");
         return v;
     }
 
-    private static object ParseValue(string s, ref int i)
+    // 深度上限:指令 JSON 正常不过几层;深嵌套输入会让递归下降解析器栈溢出,
+    // StackOverflowException 无法被 catch,会直接杀死游戏进程(TCP 口在本机无鉴权,必须自防)
+    private const int MaxDepth = 64;
+
+    private static object ParseValue(string s, ref int i, int depth)
     {
+        if (depth > MaxDepth) throw new JsonException($"nesting deeper than {MaxDepth}");
         SkipWs(s, ref i);
         if (i >= s.Length) throw new JsonException("unexpected end");
         var c = s[i];
         switch (c)
         {
-            case '{': return ParseObject(s, ref i);
-            case '[': return ParseArray(s, ref i);
+            case '{': return ParseObject(s, ref i, depth + 1);
+            case '[': return ParseArray(s, ref i, depth + 1);
             case '"': return ParseString(s, ref i);
             case 't': Expect(s, ref i, "true"); return true;
             case 'f': Expect(s, ref i, "false"); return false;
@@ -88,7 +91,7 @@ public static class MiniJson
         }
     }
 
-    private static Dictionary<string, object> ParseObject(string s, ref int i)
+    private static Dictionary<string, object> ParseObject(string s, ref int i, int depth)
     {
         var dict = new Dictionary<string, object>();
         i++; // '{'
@@ -102,7 +105,7 @@ public static class MiniJson
             SkipWs(s, ref i);
             if (i >= s.Length || s[i] != ':') throw new JsonException($"expected ':' at {i}");
             i++;
-            var val = ParseValue(s, ref i);
+            var val = ParseValue(s, ref i, depth);
             dict[key] = val;
             SkipWs(s, ref i);
             if (i >= s.Length) throw new JsonException("unterminated object");
@@ -112,7 +115,7 @@ public static class MiniJson
         }
     }
 
-    private static List<object> ParseArray(string s, ref int i)
+    private static List<object> ParseArray(string s, ref int i, int depth)
     {
         var list = new List<object>();
         i++; // '['
@@ -120,7 +123,7 @@ public static class MiniJson
         if (i < s.Length && s[i] == ']') { i++; return list; }
         while (true)
         {
-            var val = ParseValue(s, ref i);
+            var val = ParseValue(s, ref i, depth);
             list.Add(val);
             SkipWs(s, ref i);
             if (i >= s.Length) throw new JsonException("unterminated array");

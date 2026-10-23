@@ -21,6 +21,7 @@ internal static class TaskPrivilege
     private static int _stepsDone;
     private static int _lastMinigameFrameSeen;
     private static int _correctTries;
+    private static int _reopens;     // 面板中途被关的重开次数(防"开了即关"死循环)
     private static bool _relaxedApproach;
     private static Minigame _opened;   // 仅用于关闭(存活判定仍用 Minigame.Instance)
     private static PlayerTask _task;
@@ -60,6 +61,7 @@ internal static class TaskPrivilege
         _refJson = refJson;
         _stepsDone = 0;
         _correctTries = 0;
+        _reopens = 0;
         _abortReason = null;
         EnterWalkStage();
         return null;
@@ -252,7 +254,13 @@ internal static class TaskPrivilege
                 {
                     _abortReason = "panel_closed_early";
                     EventTap.Emit("TASK_ABORT", null, null, $"task={_taskId} reason=panel_closed");
-                    // 面板中途被关:回走到任务台重开(外观与真人一致)
+                    // 面板中途被关:回走到任务台重开(外观与真人一致);但"开了即关"式的
+                    // 异常 minigame 会 Walk→Opening→Timing→closed 无限循环,必须设上限
+                    if (++_reopens > 3)
+                    {
+                        Finish(Stage.Aborted);
+                        return;
+                    }
                     EnterWalkStage();
                     return;
                 }
@@ -270,6 +278,7 @@ internal static class TaskPrivilege
                 catch (Exception e) { _abortReason = $"step_fail:{e.Message}"; Finish(Stage.Aborted); return; }
 
                 _stepsDone++;
+                _reopens = 0;   // 成功推进一步:重开计数重新起算(多阶段任务合法多次开面板)
                 var done = false;
                 try { done = _task.IsComplete; } catch { }
                 EventTap.Emit("TASK_STEP", null, null, $"task={_taskId} step#{_stepsDone} done={done}");

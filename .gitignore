@@ -1,6 +1,23 @@
 # 游戏本体与运行时(1.3G,超 GitHub 单文件限制,不入库)
 aubody/
 aubody.zip
-agent/
-agent/agent_run.log
+tmp_cua/
+
+# Python 运行产物
+__pycache__/
+*.pyc
+
+# agent 本机凭据(模板见 agent/config.example.ini)与运行时状态
+agent/config.ini
 agent/agent.log
+agent/agent_run.log
+agent/logs.json
+agent/s.json
+agent/state_dbg.json
+agent/data/meeting_chat.jsonl
+agent/data/meeting_out.jsonl
+agent/data/voice_out.jsonl
+agent/data/memory/
+
+# mod 构建产物(交付物只入根 dist/;MVID 每次编译都变,历史副本无意义)
+TheOtherUs-5093a00/dist/

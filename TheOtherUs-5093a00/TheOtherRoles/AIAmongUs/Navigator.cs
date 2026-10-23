@@ -226,7 +226,8 @@ internal static class Navigator
         }
         catch (Exception e) { AIBridgePlugin.Log?.LogWarning($"platform: {e.Message}"); }
 
-        var playerBlocked = 0; // 玩家障碍改由转向层动态处理(假人会走,静态标格反而堵路)
+        // 玩家障碍已撤销:改由转向层动态处理(假人会走,静态标格反而堵路,实测)
+        // (历史方案 tombstone:playerBlocked 计数)
 
         // ---- 工序1b:门洞强制(门位置=真实通道,门周 0.5u 圆盘内格子必可走;
         //      否则窄门洞格心距门框 < 玩家半径会被误封,实测把东西两半图断开) ----
@@ -260,7 +261,7 @@ internal static class Navigator
         catch (Exception e) { AIBridgePlugin.Log?.LogWarning($"door force: {e.Message}"); }
 
         // 形态学开运算已撤销:0.25 格距下它会吞掉真实 0.5u 走廊(实测 reach 29%)
-        var morphCut = 0;
+        // (历史方案 tombstone:morphCut 计数)
 
         // ---- 工序2:边验证(相邻可走格间胶囊扫掠,封实体阻断) ----
         _edgeMask = new byte[_walk.Length];
@@ -292,7 +293,8 @@ internal static class Navigator
         try { pruned = PruneUnanchored(ship); }
         catch (Exception e) { AIBridgePlugin.Log?.LogWarning($"prune: {e.Message}"); }
 
-        var roomPruned = 0; // 房间多边形剪枝已撤销:真实地板一半不在任何 roomArea 多边形内(实测 room_pruned=15985 误杀)
+        // 房间多边形剪枝已撤销:真实地板一半不在任何 roomArea 多边形内(实测 room_pruned=15985 误杀)
+        // (历史方案 tombstone:roomPruned 计数)
 
         // ---- 工序1d:门直连边(门框会让胶囊边测试封死真实门洞,实测整片房间变孤岛) ----
         // 做法:门周 1.4u 内收集可走格,取"分居门两侧 + 胶囊通畅 + 距离最近"的一对直连。
@@ -1019,6 +1021,7 @@ internal static class Navigator
     /// <summary>栅格位图 + 从玩家位置 BFS 的可达域(nav_dump 指令)。</summary>
     public static string DumpGridJson()
     {
+        if (_walk == null) return "{\"type\":\"nav_dump\",\"err\":\"not_built\"}"; // 建图前调用不该 NRE
         var me = PlayerControl.LocalPlayer;
         var from = me != null ? me.GetTruePosition() : Vector2.zero;
         var start = NearestWalkable(from);
@@ -1332,25 +1335,6 @@ internal static class Navigator
             return false;
         }
         catch { return false; }
-    }
-
-    /// <summary>路径拉直:在 [idx, 下一乘坐点] 范围内找离玩家最远的"直线可达"路点。
-    /// 视线用与建图同一胶囊判定,天然贴墙但不会顶墙;比逐点跟随更顺。</summary>
-    private static int BestVisibleWaypoint(Vector2 pos, int idx)
-    {
-        if (_path.Length == 0) return 0;
-        var limit = _path.Length - 1;
-        for (var ci = 0; ci < _pathCrossings.Count; ci++)
-        {
-            var b = _pathCrossings[ci].BoardIdx;
-            if (b >= idx) { limit = Mathf.Min(limit, b); break; }   // 不越过乘坐点
-        }
-        var far = Mathf.Min(limit, idx + 8);
-        for (var k = far; k > idx; k--)
-        {
-            if (!SegmentBlocked(pos, _path[k])) return k;
-        }
-        return Mathf.Min(idx, _path.Length - 1);
     }
 
     /// <summary>简单避障转向:直行受阻时尝试 ±25°/±50°/±75°/±100°,取第一个通畅方向。</summary>

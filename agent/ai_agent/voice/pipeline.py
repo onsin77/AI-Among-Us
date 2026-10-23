@@ -127,6 +127,11 @@ class VoiceMeetingPipeline:
         self.asr: XfyunAsr | None = None
         self.last_error: str | None = None
         self.out_file: Path | None = Path(cfg.out_file)
+        # setup/teardown 互斥:相位抖动(MEETING↔PLAYING 抖动)时两者都是 ensure_future,
+        # 不加锁会互相踩掉对方的 asr/采集(asr 被置 None 后 _check_asr_reconnect 直接躺平)
+        self._mt_lock = asyncio.Lock()
+        # TTS 静音的收尾余量:播放标志降下后残留缓冲还能响 ~百毫秒,立刻解禁会自识别
+        self._muted_until = 0.0
 
     def _tts_cfg(self):
         from .xtts import TtsConfig
@@ -185,39 +190,42 @@ class VoiceMeetingPipeline:
             self._fire_game_summary()
 
     async def _setup_meeting(self) -> None:
-        if self.active:
-            return
-        self.active = True
-        # 语音会议期间接管会议大脑:暂停文件会议管线,防止双重应答(散会恢复)
-        mp = getattr(self, "_meeting", None)
-        if mp is not None:
-            self._meeting_prev_enabled = bool(mp.cfg.enabled)
-            mp.cfg.enabled = False
-        self._meeting_count_game += 1
-        now = time.time()
-        self.meeting_started_at = now
-        self.turn_idx = 0
-        self.spoken = set()
-        self.transcript.clear()
-        self.rl2pid = {}
-        self._utter = _UtterBuf()
-        self._last_rl = 0
-        self.live_text = ""
-        self.voted = False
-        self.my_state = "waiting"
-        self.my_last = None
-        self.last_activity_at = now
-        self.turn_started_at = now
-        self.speaking_order = []          # 等 L1 上报
-        log.info("voice meeting #%d setup", self._meeting_count_game)
+        async with self._mt_lock:
+            if self.active:
+                return
+            self.active = True
+            # 语音会议期间接管会议大脑:暂停文件会议管线,防止双重应答(散会恢复)
+            mp = getattr(self, "_meeting", None)
+            if mp is not None:
+                self._meeting_prev_enabled = bool(mp.cfg.enabled)
+                mp.cfg.enabled = False
+            self._meeting_count_game += 1
+            now = time.time()
+            self.meeting_started_at = now
+            self.turn_idx = 0
+            self.spoken = set()
+            self.transcript.clear()
+            self.rl2pid = {}
+            self._utter = _UtterBuf()
+            self._last_rl = 0
+            self.live_text = ""
+            self.voted = False
+            self.my_state = "waiting"
+            self.my_last = None
+            self.last_activity_at = now
+            self.turn_started_at = now
+            self.speaking_order = []          # 等 L1 上报
+            log.info("voice meeting #%d setup", self._meeting_count_game)
 
-        if not self.capture.running:
-            ok = await self.capture.start()
-            if not ok:
-                log.warning("capture 启动失败:%s(继续用超时轮次推进)", self.capture.last_error)
-        self._asr_reconnects = 0
-        await self._start_asr()
-        self._maybe_trigger_my_turn(force_reporter_check=True)
+            # 上一场散会尾巴还积在采集队列里:先丢弃,防止当成这场的新发言(幽灵发言)
+            self.capture.drain()
+            if not self.capture.running:
+                ok = await self.capture.start()
+                if not ok:
+                    log.warning("capture 启动失败:%s(继续用超时轮次推进)", self.capture.last_error)
+            self._asr_reconnects = 0
+            await self._start_asr()
+            self._maybe_trigger_my_turn(force_reporter_check=True)
 
     async def _start_asr(self) -> None:
         was_session = self.asr is not None
@@ -255,46 +263,52 @@ class VoiceMeetingPipeline:
             return
         self._asr_reconnects += 1
         if self._asr_reconnects > 60:
+            self.last_error = "asr 重连次数耗尽(本场会议放弃 ASR,轮麦仅靠超时推进)"
             return
         self._schedule_asr_reconnect()
         asyncio.ensure_future(self._start_asr())
 
     async def _teardown_meeting(self, write_summary: bool = False) -> None:
-        was_active = self.active
-        self.active = False
-        mp = getattr(self, "_meeting", None)
-        if mp is not None and getattr(self, "_meeting_prev_enabled", None) is not None:
-            mp.cfg.enabled = self._meeting_prev_enabled
-            self._meeting_prev_enabled = None
-        self._close_stale_utter(force=True)
-        if self.asr is not None:
-            try:
-                await self.asr.close()
-            except Exception:
-                pass
-            self.asr = None
-        if self._my_task and not self._my_task.done():
-            self._my_task.cancel()
-            self._my_task = None
-        if self._vote_task and not self._vote_task.done():
-            self._vote_task.cancel()
-            self._vote_task = None
-        self.capture.stop()
-        self.player.stop()
-        self.my_state = "idle"
-        if was_active and write_summary:
-            self._append_out({"type": "voice_meeting_end", "at": time.time(),
-                              "utterances": len(self.transcript),
-                              "turns_done": len(self.spoken), "voted": self.voted,
-                              "suspicion": self.suspicion})
-            self._fire_goals()
+        async with self._mt_lock:
+            was_active = self.active
+            self.active = False
+            mp = getattr(self, "_meeting", None)
+            if mp is not None and getattr(self, "_meeting_prev_enabled", None) is not None:
+                mp.cfg.enabled = self._meeting_prev_enabled
+                self._meeting_prev_enabled = None
+            self._close_stale_utter(force=True)
+            if self.asr is not None:
+                try:
+                    await self.asr.close()
+                except Exception:
+                    pass
+                self.asr = None
+            if self._my_task and not self._my_task.done():
+                self._my_task.cancel()
+                self._my_task = None
+            if self._vote_task and not self._vote_task.done():
+                self._vote_task.cancel()
+                self._vote_task = None
+            self.capture.stop()
+            self.player.stop()
+            self.my_state = "idle"
+            if was_active and write_summary:
+                self._append_out({"type": "voice_meeting_end", "at": time.time(),
+                                  "utterances": len(self.transcript),
+                                  "turns_done": len(self.spoken), "voted": self.voted,
+                                  "suspicion": self.suspicion})
+                self._fire_goals()
 
     # ---------- 音频面 ----------
 
     async def _drain_audio(self) -> None:
         if not self.capture.running:
             return
-        muted = self.player.speaking       # 我正在播 TTS:喂静音,避免把自己转写进去
+        # 我正在播 TTS:喂静音,避免把自己转写进去;结束后再保持 0.3s 静音,
+        # 盖住播放设备残留缓冲的尾音与整批搬运的采样空窗
+        if self.player.speaking:
+            self._muted_until = time.time() + 0.3
+        muted = time.time() < self._muted_until
         n = 0
         while n < 60:                       # 每轮最多搬 60 帧(2.4s),防卡 tick
             frame = await self.capture.read()
@@ -409,12 +423,20 @@ class VoiceMeetingPipeline:
         if not self.active or not self.speaking_order:
             return
         me = self._me_id()
-        if self._expected_pid() == me:
-            self.turn_started_at = time.time()   # 轮到我:由 _my_speak 流程控制,不超时
-            self._maybe_trigger_my_turn()
-            return
-        now = time.time()
         expected = self._expected_pid()
+        if expected == me:
+            busy = (self.my_state in ("thinking", "speaking")
+                    or (self._my_task is not None and not self._my_task.done()))
+            if busy:
+                self.turn_started_at = time.time()   # 我方发言由 _my_speak 流程收尾,不超时
+                self._maybe_trigger_my_turn()
+                return
+            if me in self.spoken:
+                if time.time() - self.last_activity_at > self.cfg.turn_end_gap:
+                    self._advance_turn()
+                return
+            # 发言任务不在跑也没说完(异常残留):落到底部超时兜底,我方轮次不许永久卡死
+        now = time.time()
         if expected is None:
             return
         if expected in self.spoken:
@@ -475,34 +497,39 @@ class VoiceMeetingPipeline:
             self.my_last = {"at": t0, "latency_ms": int((time.time() - t0) * 1000), "pos": idx,
                             "say": "", "error": err}
         self._merge_suspicion(sus)
+        try:
+            clean = clean_for_tts(say)
+            if not clean:
+                # 兜底:极简发言(不能冷场)
+                clean = self._fallback_line(idx)
+                if self.my_last is not None:
+                    self.my_last["fallback"] = True
 
-        clean = clean_for_tts(say)
-        if not clean:
-            # 兜底:极简发言(不能冷场)
-            clean = self._fallback_line(idx)
-            self.my_last and self.my_last.update({"fallback": True})
-        if err and not clean:
+            self.my_state = "speaking"
+            self._append_out({"type": "voice_turn", "at": time.time(), "speaker": self._pid_name(me),
+                              "pos": idx, "text": clean, "sus": self.suspicion,
+                              "latency_ms": (self.my_last or {}).get("latency_ms")})
+            wav = await self.tts.synth(clean)
+            ok = False
+            if wav:
+                ok = self.player.play_wav_bytes(wav)
+            if not ok:
+                log.warning("tts 播放失败,仅文字:%s", self.player.last_error or self.tts.cfg.base_url)
+            if self.cfg.also_chat_in_game:
+                await self._send({"type": "chat", "text": clean[:120]})
+            # 等播放完(≤ 上限)
+            deadline = time.time() + MY_TURN_GUARD
+            while self.player.speaking and time.time() < deadline:
+                await asyncio.sleep(0.15)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            # TTS/播放链路意外异常:必须收敛轮次,否则 my_state 卡在 speaking、整场轮麦死锁
+            self.last_error = f"my speak: {type(e).__name__}: {e}"
+            log.exception("my speak failed after model")
+        finally:
+            self.live_text = ""
             self._finish_my_turn(me)
-            return
-
-        self.my_state = "speaking"
-        self._append_out({"type": "voice_turn", "at": time.time(), "speaker": self._pid_name(me),
-                          "pos": idx, "text": clean, "sus": self.suspicion,
-                          "latency_ms": (self.my_last or {}).get("latency_ms")})
-        wav = await self.tts.synth(clean)
-        ok = False
-        if wav:
-            ok = self.player.play_wav_bytes(wav)
-        if not ok:
-            log.warning("tts 播放失败,仅文字:%s", self.player.last_error or self.tts.cfg.base_url)
-        if self.cfg.also_chat_in_game:
-            await self._send({"type": "chat", "text": clean[:120]})
-        # 等播放完(≤ 上限)
-        deadline = time.time() + MY_TURN_GUARD
-        while self.player.speaking and time.time() < deadline:
-            await asyncio.sleep(0.15)
-        self.live_text = ""
-        self._finish_my_turn(me)
 
     def _finish_my_turn(self, me: int | None) -> None:
         self.my_state = "done"

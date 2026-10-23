@@ -42,6 +42,8 @@ internal static class AIPatches
 [HarmonyPatch(typeof(PlayerPhysics), nameof(PlayerPhysics.FixedUpdate))]
 internal static class AIMovementPatch
 {
+    private static bool _errored;
+
     [HarmonyPriority(Priority.Last)]
     [HarmonyPostfix]
     private static void Postfix(PlayerPhysics __instance)
@@ -52,7 +54,12 @@ internal static class AIMovementPatch
         }
         catch (Exception e)
         {
-            AIBridgePlugin.Log?.LogError($"movement override failed: {e.Message}");
+            // 物理帧 ~60/s:持续故障时逐帧 LogError 会刷爆日志,只记第一次
+            if (!_errored)
+            {
+                _errored = true;
+                AIBridgePlugin.Log?.LogError($"movement override failed (suppressed further): {e.Message}");
+            }
         }
     }
 }
@@ -68,6 +75,6 @@ internal static class AIChatPatch
     private static void Postfix(PlayerControl sourcePlayer, string chatText)
     {
         try { EventTap.OnChat(sourcePlayer, chatText); }
-        catch { }
+        catch (Exception e) { AIBridgePlugin.Log?.LogWarning($"chat tap failed: {e.Message}"); }
     }
 }

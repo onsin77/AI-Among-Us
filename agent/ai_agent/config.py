@@ -68,8 +68,10 @@ class Config:
         cfg = cls(config_path=p)
         if not p.exists():
             return cfg  # 全默认值
-        parser = configparser.ConfigParser()
-        parser.read(p, encoding="utf-8")
+        # utf-8-sig:Windows 记事本常存 BOM,纯 utf-8 会让首段 [bridge] 匹配不到而全静默回落默认值
+        # interpolation=None:值里出现裸 % 时不应让启动崩溃
+        parser = configparser.ConfigParser(interpolation=None)
+        parser.read(p, encoding="utf-8-sig")
         if parser.has_section("bridge"):
             cfg.bridge_host = parser.get("bridge", "host", fallback=cfg.bridge_host).strip()
             cfg.bridge_port = parser.getint("bridge", "port", fallback=cfg.bridge_port)

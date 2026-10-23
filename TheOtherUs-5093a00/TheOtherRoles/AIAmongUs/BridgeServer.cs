@@ -114,6 +114,7 @@ internal static class BridgeServer
             catch (Exception)
             {
                 if (!_running) return;
+                Thread.Sleep(200); // listener 带病运行时不空转烧 CPU
                 continue;
             }
 
@@ -132,26 +133,31 @@ internal static class BridgeServer
             using var stream = client.GetStream();
             var buf = new byte[4096];
             var lineBuf = new StringBuilder();
-            while (_running)
-            {
-                int n;
-                try { n = stream.Read(buf, 0, buf.Length); }
-                catch (Exception) { break; }
-                if (n <= 0) break;
-                lineBuf.Append(Encoding.UTF8.GetString(buf, 0, n));
-                // 行拆分(容忍 \r\n)
-                string pending = lineBuf.ToString();
-                int nl;
-                while ((nl = pending.IndexOf('\n')) >= 0)
+                while (_running)
                 {
-                    var line = pending.Substring(0, nl).TrimEnd('\r').Trim();
-                    if (line.Length > 0) Inbound.Enqueue(line);
-                    pending = pending.Substring(nl + 1);
+                    int n;
+                    try { n = stream.Read(buf, 0, buf.Length); }
+                    catch (Exception) { break; }
+                    if (n <= 0) break;
+                    lineBuf.Append(Encoding.UTF8.GetString(buf, 0, n));
+                    // 行拆分(容忍 \r\n)
+                    string pending = lineBuf.ToString();
+                    int nl;
+                    while ((nl = pending.IndexOf('\n')) >= 0)
+                    {
+                        var line = pending.Substring(0, nl).TrimEnd('\r').Trim();
+                        if (line.Length > 0)
+                        {
+                            Inbound.Enqueue(line);
+                            // 入站也限流:主线程每帧只消费 64 条,恶意/异常洪峰不允许无限积压
+                            while (Inbound.Count > 4096 && Inbound.TryDequeue(out _)) { }
+                        }
+                        pending = pending.Substring(nl + 1);
+                    }
+                    lineBuf.Clear();
+                    if (pending.Length > 0) lineBuf.Append(pending);
+                    if (lineBuf.Length > 1 << 20) lineBuf.Clear(); // 单行超 1MB 视为恶意/异常,丢弃
                 }
-                lineBuf.Clear();
-                if (pending.Length > 0) lineBuf.Append(pending);
-                if (lineBuf.Length > 1 << 20) lineBuf.Clear(); // 单行超 1MB 视为恶意/异常,丢弃
-            }
         }
         catch (Exception) { }
         finally
@@ -169,20 +175,26 @@ internal static class BridgeServer
             try
             {
                 Thread.Sleep(30);
-                var batch = new List<string>();
-                while (_reliable.TryDequeue(out var r)) batch.Add(r);
 
                 string state = null;
                 long ver = Interlocked.Read(ref _volatileVersion);
                 if (ver > Interlocked.Read(ref _volatileSentVersion))
                     state = _volatileState;
 
-                if (batch.Count == 0 && state == null) continue;
-
                 List<TcpClient> dead = null;
                 lock (_clientLock)
                 {
-                    if (_clients.Count == 0) { if (state != null) Interlocked.Exchange(ref _volatileSentVersion, ver); continue; }
+                    if (_clients.Count == 0)
+                    {
+                        // 零客户端:可靠消息(事件/ack)必须留在队列里等重连——先出队再判空会把
+                        // agent 断线重连窗口内的消息全部丢掉,打破"必达"契约;
+                        // state 是易变的,标记已发无妨(采集 10Hz 持续刷新,新客户端马上能拿到)
+                        if (state != null) Interlocked.Exchange(ref _volatileSentVersion, ver);
+                        continue;
+                    }
+                    var batch = new List<string>();
+                    while (_reliable.TryDequeue(out var r)) batch.Add(r);
+                    if (batch.Count == 0 && state == null) continue;
                     foreach (var c in _clients)
                     {
                         try
@@ -197,7 +209,11 @@ internal static class BridgeServer
                         }
                     }
                     if (dead != null)
-                        foreach (var d in dead) _clients.Remove(d);
+                        foreach (var d in dead)
+                        {
+                            _clients.Remove(d);
+                            try { d.Close(); } catch { } // 不 Close 的话该客户端的 reader 线程可能永远阻塞在 Read
+                        }
                 }
                 if (state != null) Interlocked.Exchange(ref _volatileSentVersion, ver);
             }

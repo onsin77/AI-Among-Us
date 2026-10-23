@@ -128,12 +128,15 @@ class DeepSeekClient:
                 raise ModelError(f"HTTP {e.code}: {detail}") from e
             except (urllib.error.URLError, TimeoutError) as e:
                 raise ModelError(f"network: {e}") from e
+            except json.JSONDecodeError as e:
+                # HTTP 200 但响应体不是 JSON(代理/网关页):统一转 ModelError,调用方才能重试
+                raise ModelError(f"non-JSON response: {e}") from e
             return body, int((time.time() - t0) * 1000)
 
         body, latency = await asyncio.to_thread(_post)
         try:
             text = body["choices"][0]["message"]["content"] or ""
-        except (KeyError, IndexError) as e:
+        except (KeyError, IndexError, TypeError) as e:
             raise ModelError(f"bad response: {str(body)[:200]}") from e
         return ModelResult(
             text=text,

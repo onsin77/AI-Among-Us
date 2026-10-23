@@ -158,6 +158,18 @@ class CableCapture:
                 pass
             self._stream = None
 
+    def drain(self) -> None:
+        """丢弃采集队列里的积压帧(会议切换时防上一场的尾巴喂进新 ASR 会话)。"""
+        n = 0
+        while True:
+            try:
+                self._queue.get_nowait()
+                n += 1
+            except asyncio.QueueEmpty:
+                break
+        if n:
+            log.info("capture drained %d stale frames", n)
+
     async def read(self) -> bytes | None:
         """取一帧 16k pcm(约 40ms);无数据立即返回 None。"""
         try:
@@ -240,6 +252,7 @@ class CablePlayer:
                 s.abort()          # 立即掐断未播完的缓冲
             except Exception:
                 pass
+        # 先 abort 再降标志:顺序反了会出现"标志已降但缓冲还在响"的窗口,解禁后自识别
         self.speaking = False
 
 

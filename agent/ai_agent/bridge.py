@@ -30,12 +30,20 @@ class BridgeClient:
     # ---------- 生命周期 ----------
 
     async def run(self) -> None:
-        """连接主循环,直到 stop() 被调用。"""
+        """连接主循环,直到 stop() 被调用。
+
+        任何异常(含 world.apply 的数据错误)都不允许杀死本任务:
+        桥一死面板就永久 disconnected,只能重启进程。
+        """
         while not self._stopping.is_set():
             try:
                 await self._session()
             except (OSError, asyncio.IncompleteReadError, ConnectionError) as e:
                 log.debug("bridge session ended: %s", e)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("bridge session crashed (will reconnect in 1s)")
             self.world.on_disconnected()
             self._writer = None
             self._reader = None
@@ -81,13 +89,12 @@ class BridgeClient:
             raise ConnectionError("L1 silent for 12s (watchdog)")
         finally:
             ping_task.cancel()
-            with_log = self.world
-            with_log.on_disconnected()
+            # 断连状态统一由 run() 收口;这里不重复调用(run() 一定会执行到)
 
     async def _ping_loop(self) -> None:
         while True:
             await asyncio.sleep(5.0)
-            await self.send({"type": "ping", "ref": next(self._ref_counter)})
+            await self.send({"type": "ping", "ref": f"ping{next(self._ref_counter)}"})
 
     # ---------- 发送 ----------
 

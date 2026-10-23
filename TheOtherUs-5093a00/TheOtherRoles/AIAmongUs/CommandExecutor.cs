@@ -109,6 +109,8 @@ internal static class CommandExecutor
     {
         var id = GetNum(d, idKey);
         if (id == null) return null;
+        // byte 目标必须显式验范围:256 会被 (byte) 截断回绕成 0,命中错误玩家
+        if (id.Value < 0 || id.Value > 255) return null;
         var all = PlayerControl.AllPlayerControls;
         for (var i = 0; i < all.Count; i++)
         {
@@ -247,6 +249,7 @@ internal static class CommandExecutor
 
         DeadBody body = null;
         var victimId = GetNum(d, "body_player_id");
+        if (victimId != null && (victimId.Value < 0 || victimId.Value > 255)) return "bad_param:body_player_id";
         var bodies = UObject.FindObjectsOfType<DeadBody>();
         for (var i = 0; i < bodies.Length; i++)
         {
@@ -298,6 +301,30 @@ internal static class CommandExecutor
 
         var dist = Vector2.Distance(((Component)target).transform.position, me.GetTruePosition());
         if (dist > 2.2f) return $"too_far:{dist:F1}";
+        // 若该台挂着自己未完成的任务:不能 target.Use()——共用台会按 FindTask 开出
+        // "该台第一项未完成任务"的面板(实测开错),复刻 TaskPrivilege 的实例化流程绑定自己的任务;
+        // 非自己任务的台(地图/门开关等)仍走 Use()。
+        try
+        {
+            var tasks = me.myTasks;
+            for (var i = 0; i < tasks.Count; i++)
+            {
+                var t = tasks[i];
+                if (t == null || t.IsComplete) continue;
+                bool valid;
+                try { valid = t.ValidConsole(target); } catch { continue; }
+                if (!valid) continue;
+                var prefab = t.GetMinigamePrefab();
+                if (prefab == null) return "no_minigame_prefab";
+                var mg = UObject.Instantiate(prefab);
+                mg.transform.SetParent(Camera.main.transform, false);
+                mg.transform.localPosition = new Vector3(0f, 0f, -50f);
+                mg.Console = target;
+                mg.Begin(t);
+                return null;
+            }
+        }
+        catch (Exception e) { return "internal:" + e.Message; }
         target.Use();
         return null;
     }
@@ -347,7 +374,8 @@ internal static class CommandExecutor
         if (!can) return "not_allowed:no_sabotage_role";
 
         var ship = ShipStatus.Instance;
-        var sab = StateCollector.GetSystem(ship?.Systems, SystemTypes.Sabotage)?.TryCast<SabotageSystemType>();
+        if (ship == null) return "no_map";
+        var sab = StateCollector.GetSystem(ship.Systems, SystemTypes.Sabotage)?.TryCast<SabotageSystemType>();
         if (sab != null && sab.Timer > 0f) return $"cooldown:{sab.Timer:F1}";
         ship.RpcUpdateSystem(SystemTypes.Sabotage, (byte)sys);
         EventTap.Emit("SABOTAGE_CMD", null, null, $"type={sys}");
@@ -421,8 +449,10 @@ internal static class CommandExecutor
     private static Console FindSystemConsole(SystemTypes sys)
     {
         var ship = ShipStatus.Instance;
-        var all = ship.AllConsoles;
+        var all = ship?.AllConsoles;
+        if (all == null) return null;
         var me = PlayerControl.LocalPlayer;
+        if (me == null) return null;
         var myPos = me.GetTruePosition();
         Console best = null; var bestD = float.MaxValue;
         for (var i = 0; i < all.Length; i++)
@@ -452,6 +482,7 @@ internal static class CommandExecutor
         {
             var id = GetNum(d, "target_id");
             if (id == null) return "not_found:target_id";
+            if (id.Value < 0 || id.Value > 255) return "bad_param:target_id";
             target = (byte)id.Value;
         }
         mh.Confirm(target);
@@ -924,8 +955,6 @@ internal static class CommandExecutor
         EventTap.Emit("MEETING_FF", null, null, "force skip all");
         return null;
     }
-
-    private static byte[] _taskPoolCache;
 
     /// <summary>从本图任务池取 4 个合法任务索引(Common+Short+Long)。</summary>
     private static byte[] PickTaskIds()

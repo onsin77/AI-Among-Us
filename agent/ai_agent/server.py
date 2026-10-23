@@ -79,10 +79,20 @@ def create_app(world: WorldModel, bridge: BridgeClient,
             return JSONResponse({"ok": False, "error": "controller 未初始化"}, status_code=400)
         action = body.get("action")
         if action == "start":
+            raw_map = body.get("map")
+            if raw_map is None:
+                map_id = 4
+            else:
+                try:
+                    map_id = int(raw_map)
+                except (TypeError, ValueError):
+                    return JSONResponse({"ok": False, "error": "map 必须是整数"}, status_code=400)
+                if not 0 <= map_id <= 4:
+                    return JSONResponse({"ok": False, "error": "map 取值 0-4"}, status_code=400)
             st = await controller.start(
                 mode=str(body.get("mode") or "auto"),
                 autostart=bool(body.get("autostart")),
-                map_id=int(body.get("map") or 4),
+                map_id=map_id,
             )
             return JSONResponse({"ok": True, "status": st})
         if action == "stop":

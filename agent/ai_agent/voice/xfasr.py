@@ -58,7 +58,8 @@ class Segment:
 
 
 def build_signed_url(cfg: AsrConfig) -> str:
-    utc = time.strftime("%Y-%m-%dT%H:%M:%S+0800", time.localtime())
+    # %z 生成真实本地时区偏移(+0800):写死字面量在非东八区机器上会因时间窗校验失败
+    utc = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime())
     params = {
         "accessKeyId": cfg.api_key,
         "appId": cfg.app_id,
@@ -131,13 +132,21 @@ class XfyunAsr:
     # ---------- 生命周期 ----------
 
     async def start(self) -> bool:
-        import websockets
+        try:
+            import websockets
+        except ImportError:
+            self.last_error = "websockets 未安装(pip install websockets)"
+            return False
         if not (self.cfg.app_id and self.cfg.api_key and self.cfg.api_secret):
             self.last_error = "asr 凭据未配置([asr] app_id/api_key/api_secret)"
             return False
         url = build_signed_url(self.cfg)
         try:
-            self._ws = await asyncio.wait_for(websockets.connect(url, max_size=2 ** 22, ping_interval=None), 12)
+            # ping 保活:静默断链(NAT 超时等)必须能被检测出来,否则 connected 恒真、
+            # 上层永不重连,整场会议"装聋"。ping_interval=None 会关掉这层检测。
+            self._ws = await asyncio.wait_for(
+                websockets.connect(url, max_size=2 ** 22,
+                                   ping_interval=15, ping_timeout=10, close_timeout=5), 12)
         except Exception as e:
             self.last_error = f"ws connect: {e}"
             log.warning("asr connect failed: %s", e)
@@ -167,13 +176,12 @@ class XfyunAsr:
                 await ws.send(json.dumps({"end": True, "sessionId": self._session_id}))
             except Exception:
                 pass
-        try:
-            if self._send_task:
-                self._send_task.cancel()
-            if self._rx_task:
+        if self._send_task:
+            self._send_task.cancel()
+        if self._rx_task:
+            try:
                 await asyncio.wait_for(asyncio.shield(self._rx_task), 5)
-        except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
-            if self._rx_task:
+            except (asyncio.TimeoutError, asyncio.CancelledError):
                 self._rx_task.cancel()
         await self._safe_close()
 

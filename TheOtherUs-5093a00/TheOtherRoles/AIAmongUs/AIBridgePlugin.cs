@@ -9,7 +9,8 @@ namespace AIAmongUs;
 /// <summary>
 /// AI 桥插件入口:与主 mod 同程序集的第二个 BepInEx 插件。
 /// 不修改 TheOtherUs 任何既有文件;迭代 1 为只读采集 + TCP 通道,
-/// 主循环通过 InnerNetClient.FixedUpdate postfix 驱动(注入式 MonoBehaviour 已实测被场景切换销毁,弃用)。
+/// 主循环通过 AmongUsClient.Update postfix 驱动(注入式 MonoBehaviour 与
+/// InnerNetClient.FixedUpdate postfix 均已实测不可用,弃用,见 AIPatches 注释)。
 /// </summary>
 [BepInPlugin(Guid, "AI Among Us Bridge", "0.1.0")]
 [BepInDependency("TheOtherUs.Options.v3")] // 主 mod 先加载(职业/选项数据就绪)

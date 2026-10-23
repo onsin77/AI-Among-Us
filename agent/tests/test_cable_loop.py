@@ -1,15 +1,12 @@
 # -*- coding: utf-8 -*-
-"""VB-CABLE 回路验证:XTTS wav 播放到 CABLE Input,同时从 CABLE Output 录音,检查能量与采样率。"""
+"""VB-CABLE 回路验证:XTTS wav 播放到 CABLE Input,同时从 CABLE Output 录音,检查能量与采样率。
+
+前置:先跑 test_xfyun_auth.py 生成 data/a_xiaoyan.wav(依赖本机 XTTS 服务)。
+"""
 import queue, sys, time, wave
 from pathlib import Path
 import numpy as np
 import sounddevice as sd
-
-def find(pattern, inout):
-    for i, d in enumerate(sd.query_devices()):
-        if pattern in d["name"] and d["hostapi"] == 0:  # 0 = MME? 看 query_hostapis
-            pass
-    return None
 
 hostapis = sd.query_hostapis()
 print("hostapis:", [(i, h["name"]) for i, h in enumerate(hostapis)])
@@ -23,6 +20,9 @@ print("capture dev:", cap, sd.query_devices(cap)["name"], "hostapi", sd.query_de
 print("playback dev:", play, sd.query_devices(play)["name"], "hostapi", sd.query_devices(play)["hostapi"])
 
 wav_path = Path(__file__).resolve().parent / "data" / "a_xiaoyan.wav"
+if not wav_path.exists():
+    print(f"[SKIP] 缺 {wav_path}(先跑 test_xfyun_auth.py 生成,需本机 XTTS 服务)")
+    sys.exit(0)
 with wave.open(str(wav_path), "rb") as w:
     data = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
 sr = 16000
@@ -61,3 +61,4 @@ peaks = [g[0] for g in got]
 print(f"总块数={len(peaks)} 采样率={stream.samplerate} 播放期间峰值={max(peaks)}")
 ok = max(peaks) > 2000 and max(peaks) > peak_before * 3
 print("CABLE 回路:", "PASS" if ok else "FAIL")
+sys.exit(0 if ok else 1)

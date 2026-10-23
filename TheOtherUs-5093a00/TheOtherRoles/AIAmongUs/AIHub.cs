@@ -8,8 +8,9 @@ public enum AIPhase { MENU, LOBBY, PLAYING, MEETING, ENDED }
 
 /// <summary>
 /// 桥接中枢(纯逻辑,无 MonoBehaviour):
-/// 由 AIPatches 挂在 InnerNetClient.FixedUpdate 上的 postfix 驱动(主线程、全场景存活)。
-/// 曾用 ClassInjector 注入 MonoBehaviour,实测在场景切换时被销毁(迭代1日志实锤),弃用。
+/// 由 AIPatches 挂在 AmongUsClient.Update 上的 postfix 驱动(主线程、全场景存活)。
+/// 曾用 ClassInjector 注入 MonoBehaviour,实测在场景切换时被销毁(迭代1日志实锤),弃用;
+/// 也曾试 InnerNetClient.FixedUpdate postfix,实测不触发。
 /// 职责:phase 状态机、10Hz 采集(full/delta)、下行指令消费、游戏时钟与轮次。
 /// </summary>
 internal static class AIHub
@@ -37,6 +38,8 @@ internal static class AIHub
 
     private static int _badJsonLogged;
     private static bool _loggedFirstTick;
+    // 子步骤异常计数(每步骤每局限记录数次):单点持续异常不允许拖死整个 Tick 链
+    private static readonly Dictionary<string, int> _stepErrors = new();
 
     public static AIPhase CurrentPhase => _phase;
     public static float GameTime => _clockRunning ? Time.realtimeSinceStartup - _gameStartClock : _frozenGameTime;
@@ -64,20 +67,20 @@ internal static class AIHub
         if (_bodiesAcc >= 0.5f)
         {
             _bodiesAcc = 0f;
-            RefreshBodies();
+            SafeStep("bodies", RefreshBodies);
         }
 
         var guard = 0;
         while (_collectAcc >= CollectInterval && guard++ < 5)
         {
             _collectAcc -= CollectInterval;
-            CollectTick();
+            SafeStep("collect", CollectTick);
         }
         if (guard >= 5) _collectAcc = 0f; // 卡帧后丢弃积压,避免雪崩
 
         // 每帧驱动:导航跟随(方向计算)与任务特权状态机
-        Navigator.Tick(dt);
-        TaskPrivilege.Tick(dt);
+        SafeStep("nav", () => Navigator.Tick(dt));
+        SafeStep("task", () => TaskPrivilege.Tick(dt));
 
         // 房主自动收尾会议 Results:freeplay 假人不投票需要 ForceSkipAll 后 Proceed;
         // 本地/在线自托管房同理(房主负责点 Proceed,避免会议卡死)
@@ -102,6 +105,22 @@ internal static class AIHub
         }
 
         DrainInbound();
+    }
+
+    /// <summary>子步骤隔离:任何一步抛异常只损失该步功能,后续步骤(含指令消费)照常跑。</summary>
+    private static void SafeStep(string name, System.Action act)
+    {
+        try
+        {
+            act();
+        }
+        catch (System.Exception e)
+        {
+            _stepErrors.TryGetValue(name, out var n);
+            _stepErrors[name] = n + 1;
+            if (n < 5)
+                AIBridgePlugin.Log?.LogWarning($"AIHub step '{name}' failed ({n + 1}): {e.Message}");
+        }
     }
 
     // ---------- phase ----------
@@ -142,11 +161,13 @@ internal static class AIHub
         switch (next)
         {
             case AIPhase.PLAYING when prev is AIPhase.LOBBY or AIPhase.MENU or AIPhase.ENDED:
-                // 新对局开始:重置时钟与轮次
+                // 新对局开始:重置时钟与轮次(子步骤异常计数也重置,新对局重新告警)
                 _clockRunning = true;
                 _gameStartClock = Time.realtimeSinceStartup;
                 _frozenGameTime = 0f;
                 _meetingsStarted = 0;
+                _stepErrors.Clear();
+                StateCollector.ResetErrorBudget();
                 PrevFields.Clear();
                 BridgeServer.EnqueueReliable(LogMsg("info", "game start -> PLAYING"));
                 break;
@@ -270,14 +291,22 @@ internal static class AIHub
                 BridgeServer.EnqueueReliable(Ack(refJson, "get_state", true, null));
                 break;
             case "debug_start":
+            {
                 // 调试指令:直接驱动本地开局(联调用,等价点击菜单按钮)
                 var mode = d.TryGetValue("mode", out var m) && m is string ms ? ms : "freeplay";
                 var mapId = d.TryGetValue("map", out var mv) && mv is double md ? (int)md : 0;
-                var startErr = StartLocalGame(mode, mapId);
+                string startErr;
+                if (mode != "freeplay" && mode != "local")
+                    startErr = $"bad_param:mode({mode})";
+                else if (mapId < 0 || mapId > 4)
+                    startErr = $"bad_param:map({mapId})";   // 越界值会直接写进 TutorialMapId/MapId 选项
+                else
+                    startErr = StartLocalGame(mode, mapId);
                 BridgeServer.EnqueueReliable(startErr == null
                     ? Ack(refJson, "debug_start", true, $"{mode} map={mapId}")
                     : Ack(refJson, "debug_start", false, startErr));
                 break;
+            }
             case "debug_force_start":
                 // 调试指令:freeplay 卡在 CosmeticsCache 时,手动补跑 RunTutorial 尾部流程
                 ForceFreeplayBegin(refJson);
@@ -319,6 +348,8 @@ internal static class AIHub
             // LocalGame 的地图取自 GameOptions,必须同步设置(MapId 是 byte 选项)
             try { GameOptionsManager.Instance.CurrentGameOptions.SetByte(ByteOptionNames.MapId, (byte)mapId); } catch { }
             var freeplay = mode != "local";
+            if (!DestroyableSingleton<InnerNetServer>.InstanceExists)
+                return "no_server"; // 场景未就绪时 Instance 为 null,直接 NRE 会报成 internal 错误语义
             client.NetworkMode = freeplay ? NetworkModes.FreePlay : NetworkModes.LocalGame;
             if (freeplay)
             {

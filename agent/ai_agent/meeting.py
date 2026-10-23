@@ -66,7 +66,10 @@ class MeetingPipeline:
         self._last_result: dict[str, Any] | None = None
         self._last_error: str | None = None
         self._vote_requested: str | None = None
-        self._responded_upto = 0      # 已回应过的 statement 下标(防同一批发言反复回应)
+        # 已回应过的发言总数(单调递增;不能用列表下标——statements 截断后下标会回退,
+        # 永远追不上 responded_upto,会议 AI 会"失聪")
+        self._total_statements = 0
+        self._responded_upto = 0
         self._trigger = False
         self._ref_n = 0
         self._pending_vote: tuple[str | None, float] | None = None
@@ -123,6 +126,7 @@ class MeetingPipeline:
                         "text": str(ln.get("text") or ""),
                         "t": time.time(),
                     })
+                    self._total_statements += 1
                     if len(self._statements) > self.cfg.max_context:
                         self._statements = self._statements[-self.cfg.max_context:]
                 elif t == "vote":
@@ -143,15 +147,16 @@ class MeetingPipeline:
             else:
                 self._pending_vote = None
 
-        has_new = len(self._statements) > self._responded_upto
+        has_new = self._total_statements > self._responded_upto
         if not (has_new or self._trigger):
             return
         if time.time() - self._last_response_at < self.cfg.min_interval:
             return
 
         self._trigger = False
-        self._responded_upto = len(self._statements)
-        await self._respond()
+        # 只有推理真正落地才推进水位:失败/无模型时保留批次,等下一轮重试
+        if await self._respond():
+            self._responded_upto = self._total_statements
 
     def _read_new_lines(self) -> list[dict[str, Any]]:
         f = self.cfg.chat_file
@@ -165,10 +170,16 @@ class MeetingPipeline:
                 self._offset = 0
             if size == self._offset:
                 return []
-            with f.open("r", encoding="utf-8") as fh:
+            # 二进制读:偏移按字节算,不受多字节字符影响;只消费到最后一个完整行,
+            # 写了一半的行留在文件里等下次(否则该行会永久丢失)
+            with f.open("rb") as fh:
                 fh.seek(self._offset)
-                chunk = fh.read()
-                self._offset = fh.tell()
+                raw = fh.read()
+            last_nl = raw.rfind(b"\n")
+            if last_nl < 0:
+                return []
+            chunk = raw[:last_nl + 1].decode("utf-8", errors="replace")
+            self._offset += last_nl + 1
             out: list[dict[str, Any]] = []
             for line in chunk.splitlines():
                 line = line.strip()
@@ -206,10 +217,12 @@ class MeetingPipeline:
                 names.append(str(p.get("name")))
         return names
 
-    async def _respond(self) -> None:
+    async def _respond(self) -> bool:
+        """推理一次并执行发言/投票。返回 False 表示本轮未落地(批次保留待重试)。"""
         if self.model is None or not self.model.available:
             self._last_error = "model unavailable (no api key)"
-            return
+            self._last_response_at = time.time()  # 也按 min_interval 节流重试
+            return False
         me = self._my_name()
         roster = self._roster()
         chat_lines = []
@@ -236,9 +249,22 @@ class MeetingPipeline:
             self._last_error = str(e)
             self.world.meeting_ai.update({"last_error": self._last_error})
             log.warning("model error: %s", e)
-            return
+            self._last_response_at = time.time()  # 节流:失败也隔 min_interval 再试
+            return False
+        except Exception as e:  # 非预期异常同样不丢批次
+            self._last_error = f"{type(e).__name__}: {e}"
+            self.world.meeting_ai.update({"last_error": self._last_error})
+            log.exception("model call crashed")
+            self._last_response_at = time.time()
+            return False
         self._last_response_at = time.time()
-        obj = res.json_obj or {}
+        obj = res.json_obj
+        if not isinstance(obj, dict):
+            # 模型没给合法 JSON:按失败处理,批次保留(避免整轮发言静默作废)
+            self._last_error = f"model non-JSON: {res.text[:120]!r}"
+            self.world.meeting_ai.update({"last_error": self._last_error})
+            log.warning("%s", self._last_error)
+            return False
         say = str(obj.get("say") or "").strip()
         vote = obj.get("vote")
         self._last_result = {
@@ -257,6 +283,9 @@ class MeetingPipeline:
             await self._send_chat(say)
         if vote is not None or self._vote_requested is not None:
             await self._try_vote(vote if isinstance(vote, str) else None)
+        # 表决请求已消费:不复位会跨会议残留,让 AI 之后每轮都被迫投票
+        self._vote_requested = None
+        return True
 
     async def _send_chat(self, text: str) -> None:
         text = re.sub(r"<.*?>", "", text).replace("\n", " ").strip()
@@ -268,8 +297,11 @@ class MeetingPipeline:
     async def _try_vote(self, target: str | None) -> None:
         st = (self.world.state or {}).get("meeting") or {}
         if not st.get("can_vote"):
-            self._pending_vote = (target, time.time())
-            self._last_result and self._last_result.update({"vote_deferred": True})
+            # 挂起重试:保留最初时间戳,10s 后过期放弃(否则每次重试都刷新,永不超时)
+            prev_at = self._pending_vote[1] if self._pending_vote else time.time()
+            self._pending_vote = (target, prev_at)
+            if self._last_result is not None:
+                self._last_result["vote_deferred"] = True
             return
         names = {str((p.get("name") or "")).lower(): p.get("id")
                  for p in (self.world.state or {}).get("players") or [] if p.get("alive")}
@@ -324,6 +356,7 @@ class MeetingPipeline:
         if t == "chat":
             self._statements.append({"speaker": str(obj.get("speaker") or "?"),
                                      "text": str(obj.get("text") or ""), "t": time.time()})
+            self._total_statements += 1
         elif t == "vote":
             self._vote_requested = obj.get("target")
         if self.cfg.chat_file is not None:
@@ -338,7 +371,7 @@ class MeetingPipeline:
 
     async def respond_now(self) -> dict[str, Any]:
         """测试/面板触发一次推理,返回最后结果。"""
-        self._responded_upto = len(self._statements)
-        self._trigger = False
         await self._respond()
+        self._responded_upto = self._total_statements
+        self._trigger = False
         return self._last_result or {}
